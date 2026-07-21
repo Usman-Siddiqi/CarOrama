@@ -106,4 +106,4 @@ The next architectural increments should be:
 
 ## License
 
-No license has been selected yet. Add one before distributing or accepting external contributions.
+CarOrama is available under the [MIT License](LICENSE).
