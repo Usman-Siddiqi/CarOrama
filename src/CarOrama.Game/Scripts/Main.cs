@@ -17,6 +17,7 @@ public partial class Main : Node3D
     private ElectricVehicle? _vehicle;
     private FollowVehicleCamera? _followCamera;
     private TelemetryHud? _hud;
+    private FrontBumperCameraDisplay? _bumperCameraDisplay;
     private Transform3D _vehicleSpawnTransform;
     private IVehicleCommandSource? _commandSourceOverride;
 
@@ -136,6 +137,14 @@ public partial class Main : Node3D
 
         _hud.Vehicle = _vehicle;
         _hud.Seed = _seed;
+
+        if (_bumperCameraDisplay is null)
+        {
+            _bumperCameraDisplay = new FrontBumperCameraDisplay();
+            AddChild(_bumperCameraDisplay);
+        }
+
+        _bumperCameraDisplay.Target = _vehicle;
     }
 
     private void AddIntersectionPreviewCamera()
@@ -169,6 +178,11 @@ public partial class Main : Node3D
         if (_vehicle is not null)
         {
             _vehicle.Freeze = true;
+        }
+
+        if (_bumperCameraDisplay is not null)
+        {
+            _bumperCameraDisplay.Visible = false;
         }
     }
 

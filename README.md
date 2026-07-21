@@ -6,7 +6,7 @@ CarOrama is a long-term autonomous-driving simulation project. The current miles
 
 - Seeded, connected road graphs with intersections, directed lanes, lane boundaries, centre lines, speed limits, stop lines, traffic controls, routes, and spawn points.
 - Runtime-built roads, markings, curbs, sidewalks, stop signs, traffic lights, and lightweight roadside scenery.
-- A rigid-body electric vehicle with a single-speed motor model, configurable driven axles, regenerative and friction braking, ray-cast suspension, tire forces, collision handling, battery state of charge, and a follow camera.
+- A rigid-body electric vehicle with a single-speed motor model, configurable driven axles, regenerative and friction braking, ray-cast suspension, tire forces, collision handling, battery state of charge, a follow camera, and a live front-bumper camera feed.
 - A command-source boundary that keeps keyboard/controller input replaceable by a future driving controller.
 - Engine-independent domain code and automated tests for the road graph and electric drivetrain.
 
