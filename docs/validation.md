@@ -23,6 +23,8 @@ The core suite checks:
 
 The engine smoke test checks that a network is generated, scene geometry and a vehicle are instantiated, structured data validation passes, and a short fixed-step drivetrain scenario stays finite.
 
+The complete sequence is also available through `scripts/validate.ps1` on Windows or `scripts/validate.sh` on macOS/Linux. Set `CARORAMA_GODOT` when the Godot .NET executable is not on `PATH`.
+
 ## Manual checks
 
 For at least seeds `7`, `42`, and `2026`:
@@ -38,4 +40,3 @@ For at least seeds `7`, `42`, and `2026`:
 ## Physics calibration status
 
 Current parameters are plausible engineering starting values and are covered by invariant tests. They are not yet calibrated against a specific production EV. Future acceptance tests should use published mass, wheelbase, torque/power curves, acceleration, coast-down, skidpad, braking distance, and consumption data with stated tolerances.
-

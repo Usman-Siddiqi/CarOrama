@@ -42,7 +42,7 @@ docs/                  decisions, implementation plan, and extension guidance
 
 The dependency direction is one-way: `CarOrama.Game -> CarOrama.Core`. Core code never references Godot. Future sensor, agent, scenario-runner, and telemetry adapters will depend on stable domain interfaces rather than player input or scene-node details.
 
-See [Architecture](docs/architecture.md) and [Implementation plan](docs/implementation-plan.md) for the detailed boundaries and roadmap.
+See [Architecture](docs/architecture.md), [Implementation plan](docs/implementation-plan.md), and the [Extension guide](docs/extending.md) for detailed boundaries and roadmap.
 
 ## Prerequisites
 
@@ -86,6 +86,12 @@ godot --headless --path src/CarOrama.Game -- --smoke-test
 
 The smoke test creates a world, validates its structured network, advances the vehicle briefly, and exits with a non-zero status on failure. See [Validation](docs/validation.md) for the expected checks.
 
+To run the complete sequence with one command, set `CARORAMA_GODOT` to the Godot .NET executable if `godot` is not on `PATH`, then run:
+
+```powershell
+./scripts/validate.ps1
+```
+
 ## Current scope and next extensions
 
 This milestone does **not** contain driving agents, neural networks, reinforcement or imitation learning, perception sensors, traffic vehicles, pedestrians, or a traffic simulation.
@@ -101,4 +107,3 @@ The next architectural increments should be:
 ## License
 
 No license has been selected yet. Add one before distributing or accepting external contributions.
-
