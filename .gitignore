@@ -1,0 +1,23 @@
+# Godot-generated state
+.godot/
+mono_crash.*.json
+
+# .NET build output
+**/bin/
+**/obj/
+TestResults/
+coverage/
+
+# Editors and operating systems
+.idea/
+.vs/
+.vscode/
+*.user
+*.suo
+.DS_Store
+Thumbs.db
+
+# Local simulation output
+artifacts/
+*.log
+

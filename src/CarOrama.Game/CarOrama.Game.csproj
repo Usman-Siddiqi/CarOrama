@@ -1,0 +1,12 @@
+<Project Sdk="Godot.NET.Sdk/4.6.1">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>CarOrama.Game</RootNamespace>
+    <AssemblyName>CarOrama.Game</AssemblyName>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CarOrama.Core\CarOrama.Core.csproj" />
+  </ItemGroup>
+</Project>
+

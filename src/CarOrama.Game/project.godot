@@ -1,0 +1,35 @@
+; Engine configuration file.
+; Prefer changing settings in the editor so format details remain valid.
+
+config_version=5
+
+[application]
+
+config/name="CarOrama"
+run/main_scene="res://Scenes/Main.tscn"
+config/features=PackedStringArray("4.6", "C#", "Forward Plus")
+
+[display]
+
+window/size/viewport_width=1440
+window/size/viewport_height=900
+window/size/window_width_override=1280
+window/size/window_height_override=800
+window/stretch/mode="canvas_items"
+
+[dotnet]
+
+project/assembly_name="CarOrama.Game"
+
+[physics]
+
+3d/physics_engine="Jolt Physics"
+common/physics_ticks_per_second=120
+common/max_physics_steps_per_frame=16
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.55, 0.72, 0.88, 1)
+
