@@ -25,6 +25,14 @@ The engine smoke test checks that a network is generated, scene geometry and a v
 
 The complete sequence is also available through `scripts/validate.ps1` on Windows or `scripts/validate.sh` on macOS/Linux. Set `CARORAMA_GODOT` when the Godot .NET executable is not on `PATH`.
 
+For a repeatable close inspection of generated intersection geometry, run:
+
+```powershell
+godot --path src/CarOrama.Game -- --intersection-preview
+```
+
+This camera prioritizes a four-way or three-way junction and freezes the vehicle so road surfaces, sidewalk termination, curbs, markings, and traffic controls can be inspected without driving to the location.
+
 ## Manual checks
 
 For at least seeds `7`, `42`, and `2026`:

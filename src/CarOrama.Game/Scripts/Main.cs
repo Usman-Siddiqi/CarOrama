@@ -32,6 +32,10 @@ public partial class Main : Node3D
         _seed = ReadSeed();
         BuildWorld();
         AddLighting();
+        if (HasArgument("--intersection-preview"))
+        {
+            AddIntersectionPreviewCamera();
+        }
 
         if (smokeTest)
         {
@@ -132,6 +136,40 @@ public partial class Main : Node3D
 
         _hud.Vehicle = _vehicle;
         _hud.Seed = _seed;
+    }
+
+    private void AddIntersectionPreviewCamera()
+    {
+        if (_roadWorld is null)
+        {
+            return;
+        }
+
+        var intersection = _roadWorld.Network.Intersections
+            .Where(candidate => candidate.Kind is IntersectionKind.Corner or IntersectionKind.ThreeWay or IntersectionKind.FourWay)
+            .OrderByDescending(candidate => candidate.Kind)
+            .ThenBy(candidate => candidate.NodeId, StringComparer.Ordinal)
+            .FirstOrDefault() ?? _roadWorld.Network.Intersections[0];
+        var target = new Vector3((float)intersection.Position.X, 0.0f, (float)intersection.Position.Y);
+        var camera = new Camera3D
+        {
+            Name = "IntersectionPreviewCamera",
+            Position = target + new Vector3(17.0f, 18.0f, 21.0f),
+            Current = true,
+            Far = 500.0f,
+            Fov = 58.0f,
+        };
+        AddChild(camera);
+        camera.LookAt(target, Vector3.Up);
+        if (_hud is not null)
+        {
+            _hud.Visible = false;
+        }
+
+        if (_vehicle is not null)
+        {
+            _vehicle.Freeze = true;
+        }
     }
 
     private async Task RunSmokeTestAsync()

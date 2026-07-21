@@ -42,7 +42,7 @@ public sealed class RoadSceneBuilder
 
         foreach (var intersection in network.Intersections)
         {
-            AddIntersection(network, intersection, roads);
+            AddIntersection(network, intersection, roads, sidewalks);
         }
 
         foreach (var stopLine in network.StopLines)
@@ -95,28 +95,33 @@ public sealed class RoadSceneBuilder
         var direction = (segment.CenterLine[^1] - segment.CenterLine[0]).Normalized();
         var left = direction.PerpendicularLeft();
         var roadEdge = segment.WidthMeters * 0.5;
-        AddLine(markings, $"edge-left:{segment.Id}", segment.CenterLine[0] + (left * roadEdge), segment.CenterLine[^1] + (left * roadEdge), 0.12f, 0.018f, _white);
-        AddLine(markings, $"edge-right:{segment.Id}", segment.CenterLine[0] - (left * roadEdge), segment.CenterLine[^1] - (left * roadEdge), 0.12f, 0.018f, _white);
+        var startTrim = RequiresIntersectionCutout(network.GetNode(segment.StartNodeId)) ? roadEdge : 0.0;
+        var endTrim = RequiresIntersectionCutout(network.GetNode(segment.EndNodeId)) ? roadEdge : 0.0;
+        var trimmedStart = segment.CenterLine[0] + (direction * startTrim);
+        var trimmedEnd = segment.CenterLine[^1] - (direction * endTrim);
+        var trimmedLength = Vector2D.Distance(trimmedStart, trimmedEnd);
+        AddLine(markings, $"edge-left:{segment.Id}", trimmedStart + (left * roadEdge), trimmedEnd + (left * roadEdge), 0.12f, 0.018f, _white);
+        AddLine(markings, $"edge-right:{segment.Id}", trimmedStart - (left * roadEdge), trimmedEnd - (left * roadEdge), 0.12f, 0.018f, _white);
 
         var sidewalkOffset = roadEdge + (segment.SidewalkWidthMeters * 0.5) + 0.22;
         foreach (var side in new[] { -1.0, 1.0 })
         {
             var offset = left * (sidewalkOffset * side);
-            var sidewalkStart = ToWorld(segment.CenterLine[0] + offset);
-            var sidewalkEnd = ToWorld(segment.CenterLine[^1] + offset);
+            var sidewalkStart = ToWorld(trimmedStart + offset);
+            var sidewalkEnd = ToWorld(trimmedEnd + offset);
             sidewalks.AddChild(PrimitiveFactory.Box(
                 $"sidewalk:{segment.Id}:{side}",
-                new Vector3((float)segment.SidewalkWidthMeters, 0.16f, length),
+                new Vector3((float)segment.SidewalkWidthMeters, 0.16f, (float)trimmedLength),
                 PrimitiveFactory.OrientedBoxTransform(sidewalkStart, sidewalkEnd, 0.1f),
                 _sidewalk,
                 collision: true));
 
             var curbOffset = left * ((roadEdge + 0.12) * side);
-            var curbStart = ToWorld(segment.CenterLine[0] + curbOffset);
-            var curbEnd = ToWorld(segment.CenterLine[^1] + curbOffset);
+            var curbStart = ToWorld(trimmedStart + curbOffset);
+            var curbEnd = ToWorld(trimmedEnd + curbOffset);
             sidewalks.AddChild(PrimitiveFactory.Box(
                 $"curb:{segment.Id}:{side}",
-                new Vector3(0.22f, 0.24f, length),
+                new Vector3(0.22f, 0.24f, (float)trimmedLength),
                 PrimitiveFactory.OrientedBoxTransform(curbStart, curbEnd, 0.12f),
                 _curb,
                 collision: true));
@@ -125,19 +130,212 @@ public sealed class RoadSceneBuilder
         AddRoadsideTrees(segment, scenery, direction, left, roadEdge + segment.SidewalkWidthMeters + 2.2);
     }
 
-    private void AddIntersection(RoadNetwork network, Intersection intersection, Node3D roads)
+    private void AddIntersection(
+        RoadNetwork network,
+        Intersection intersection,
+        Node3D roads,
+        Node3D sidewalks)
     {
         var widestRoad = intersection.IncomingLaneIds
             .Select(network.GetLane)
             .Select(lane => network.GetSegment(lane.SegmentId).WidthMeters)
             .DefaultIfEmpty(7.2)
             .Max();
-        var size = (float)(widestRoad + 2.4);
+        var size = (float)(widestRoad + 0.08);
         roads.AddChild(PrimitiveFactory.Box(
             $"intersection:{intersection.NodeId}",
             new Vector3(size, 0.13f, size),
             new Transform3D(Basis.Identity, ToWorld(intersection.Position)),
             _asphalt));
+
+        if (intersection.Kind is IntersectionKind.Corner or IntersectionKind.ThreeWay or IntersectionKind.FourWay)
+        {
+            AddIntersectionSidewalks(network, intersection, sidewalks, widestRoad);
+        }
+    }
+
+    private void AddIntersectionSidewalks(
+        RoadNetwork network,
+        Intersection intersection,
+        Node3D sidewalks,
+        double roadWidth)
+    {
+        var node = network.GetNode(intersection.NodeId);
+        var connectedDirections = GetConnectedDirections(network, node);
+        var sidewalkWidth = node.ConnectedSegmentIds
+            .Select(network.GetSegment)
+            .Select(segment => segment.SidewalkWidthMeters)
+            .DefaultIfEmpty(2.4)
+            .Max();
+        var roadEdge = roadWidth * 0.5;
+        var sidewalkOffset = roadEdge + (sidewalkWidth * 0.5) + 0.22;
+
+        foreach (var xSign in new[] { -1, 1 })
+        {
+            foreach (var ySign in new[] { -1, 1 })
+            {
+                var horizontalBranch = xSign > 0 ? connectedDirections.East : connectedDirections.West;
+                var verticalBranch = ySign > 0 ? connectedDirections.South : connectedDirections.North;
+                if (!horizontalBranch && !verticalBranch)
+                {
+                    continue;
+                }
+
+                var padPosition = intersection.Position + new Vector2D(
+                    xSign * sidewalkOffset,
+                    ySign * sidewalkOffset);
+                sidewalks.AddChild(PrimitiveFactory.Box(
+                    $"sidewalk-corner:{intersection.NodeId}:{xSign}:{ySign}",
+                    new Vector3((float)sidewalkWidth, 0.16f, (float)sidewalkWidth),
+                    new Transform3D(Basis.Identity, ToWorld(padPosition) + (Vector3.Up * 0.1f)),
+                    _sidewalk,
+                    collision: true));
+
+                if (horizontalBranch)
+                {
+                    var curbPosition = intersection.Position + new Vector2D(
+                        xSign * sidewalkOffset,
+                        ySign * (roadEdge + 0.12));
+                    sidewalks.AddChild(PrimitiveFactory.Box(
+                        $"curb-corner-x:{intersection.NodeId}:{xSign}:{ySign}",
+                        new Vector3((float)sidewalkWidth, 0.24f, 0.22f),
+                        new Transform3D(Basis.Identity, ToWorld(curbPosition) + (Vector3.Up * 0.12f)),
+                        _curb,
+                        collision: true));
+                }
+
+                if (verticalBranch)
+                {
+                    var curbPosition = intersection.Position + new Vector2D(
+                        xSign * (roadEdge + 0.12),
+                        ySign * sidewalkOffset);
+                    sidewalks.AddChild(PrimitiveFactory.Box(
+                        $"curb-corner-z:{intersection.NodeId}:{xSign}:{ySign}",
+                        new Vector3(0.22f, 0.24f, (float)sidewalkWidth),
+                        new Transform3D(Basis.Identity, ToWorld(curbPosition) + (Vector3.Up * 0.12f)),
+                        _curb,
+                        collision: true));
+                }
+            }
+        }
+
+        AddClosedSideBridges(sidewalks, intersection, connectedDirections, roadEdge, sidewalkWidth, sidewalkOffset);
+    }
+
+    private void AddClosedSideBridges(
+        Node3D sidewalks,
+        Intersection intersection,
+        ConnectedDirections directions,
+        double roadEdge,
+        double sidewalkWidth,
+        double sidewalkOffset)
+    {
+        if (directions.North && directions.South)
+        {
+            if (!directions.East)
+            {
+                AddVerticalSidewalkBridge(sidewalks, intersection, 1, roadEdge, sidewalkWidth, sidewalkOffset);
+            }
+
+            if (!directions.West)
+            {
+                AddVerticalSidewalkBridge(sidewalks, intersection, -1, roadEdge, sidewalkWidth, sidewalkOffset);
+            }
+        }
+
+        if (directions.East && directions.West)
+        {
+            if (!directions.South)
+            {
+                AddHorizontalSidewalkBridge(sidewalks, intersection, 1, roadEdge, sidewalkWidth, sidewalkOffset);
+            }
+
+            if (!directions.North)
+            {
+                AddHorizontalSidewalkBridge(sidewalks, intersection, -1, roadEdge, sidewalkWidth, sidewalkOffset);
+            }
+        }
+    }
+
+    private void AddVerticalSidewalkBridge(
+        Node3D sidewalks,
+        Intersection intersection,
+        int xSign,
+        double roadEdge,
+        double sidewalkWidth,
+        double sidewalkOffset)
+    {
+        var sidewalkPosition = intersection.Position + new Vector2D(xSign * sidewalkOffset, 0.0);
+        sidewalks.AddChild(PrimitiveFactory.Box(
+            $"sidewalk-bridge-z:{intersection.NodeId}:{xSign}",
+            new Vector3((float)sidewalkWidth, 0.16f, (float)(roadEdge * 2.0)),
+            new Transform3D(Basis.Identity, ToWorld(sidewalkPosition) + (Vector3.Up * 0.1f)),
+            _sidewalk,
+            collision: true));
+
+        var curbPosition = intersection.Position + new Vector2D(xSign * (roadEdge + 0.12), 0.0);
+        sidewalks.AddChild(PrimitiveFactory.Box(
+            $"curb-bridge-z:{intersection.NodeId}:{xSign}",
+            new Vector3(0.22f, 0.24f, (float)(roadEdge * 2.0)),
+            new Transform3D(Basis.Identity, ToWorld(curbPosition) + (Vector3.Up * 0.12f)),
+            _curb,
+            collision: true));
+    }
+
+    private void AddHorizontalSidewalkBridge(
+        Node3D sidewalks,
+        Intersection intersection,
+        int ySign,
+        double roadEdge,
+        double sidewalkWidth,
+        double sidewalkOffset)
+    {
+        var sidewalkPosition = intersection.Position + new Vector2D(0.0, ySign * sidewalkOffset);
+        sidewalks.AddChild(PrimitiveFactory.Box(
+            $"sidewalk-bridge-x:{intersection.NodeId}:{ySign}",
+            new Vector3((float)(roadEdge * 2.0), 0.16f, (float)sidewalkWidth),
+            new Transform3D(Basis.Identity, ToWorld(sidewalkPosition) + (Vector3.Up * 0.1f)),
+            _sidewalk,
+            collision: true));
+
+        var curbPosition = intersection.Position + new Vector2D(0.0, ySign * (roadEdge + 0.12));
+        sidewalks.AddChild(PrimitiveFactory.Box(
+            $"curb-bridge-x:{intersection.NodeId}:{ySign}",
+            new Vector3((float)(roadEdge * 2.0), 0.24f, 0.22f),
+            new Transform3D(Basis.Identity, ToWorld(curbPosition) + (Vector3.Up * 0.12f)),
+            _curb,
+            collision: true));
+    }
+
+    private static ConnectedDirections GetConnectedDirections(RoadNetwork network, RoadNode node)
+    {
+        var directions = new ConnectedDirections();
+        foreach (var segmentId in node.ConnectedSegmentIds)
+        {
+            var segment = network.GetSegment(segmentId);
+            var otherNodeId = segment.StartNodeId == node.Id ? segment.EndNodeId : segment.StartNodeId;
+            var offset = network.GetNode(otherNodeId).Position - node.Position;
+            directions.East |= offset.X > 0.0;
+            directions.West |= offset.X < 0.0;
+            directions.South |= offset.Y > 0.0;
+            directions.North |= offset.Y < 0.0;
+        }
+
+        return directions;
+    }
+
+    private static bool RequiresIntersectionCutout(RoadNode node) =>
+        node.Kind is IntersectionKind.Corner or IntersectionKind.ThreeWay or IntersectionKind.FourWay;
+
+    private sealed class ConnectedDirections
+    {
+        public bool North { get; set; }
+
+        public bool South { get; set; }
+
+        public bool East { get; set; }
+
+        public bool West { get; set; }
     }
 
     private void AddDashedLine(Node3D parent, string name, Vector2D from, Vector2D to, Material material)
@@ -274,4 +472,3 @@ public sealed class RoadSceneBuilder
 
     private static Vector3 ToWorld(Vector2D point) => new((float)point.X, 0.0f, (float)point.Y);
 }
-
