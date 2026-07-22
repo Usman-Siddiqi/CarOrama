@@ -54,6 +54,6 @@ public partial class TelemetryHud : CanvasLayer
             $"Headlights {(lighting.HeadlightsEnabled ? "ON" : "OFF"),-3}    Signal {signal}\n\n" +
             "WASD/Arrows drive  |  Space friction brake\n" +
             "Q/E indicators  |  X hazards  |  H headlights\n" +
-            "R reset  |  N new seeded world";
+            "C camera  |  R reset  |  N new seeded world";
     }
 }

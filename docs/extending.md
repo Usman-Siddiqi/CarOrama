@@ -49,6 +49,8 @@ Ground-truth queries should use `RoadNetwork` identifiers and spatial data. Rend
 
 Do not add Python dependencies to either existing project. Introduce a versioned protocol assembly and a scenario-runner service with explicit reset/observe/step operations. Then create a separate Python package that communicates over gRPC or shared memory.
 
+The initial in-process boundary is `ISimulationEnvironment`. `SimulationScenario` fixes an integer physics/control cadence, `EpisodeResetRequest` binds the seed/route/spawn, and each tick-addressed `DrivingAction` requests steering plus longitudinal acceleration. The environment returns `PrivilegedObservation` and `EpisodeStepResult` values without exposing Godot nodes. A future transport should map these semantics to explicit wire DTOs or codecs, preserve validation at the domain boundary, and prove round-trip compatibility in tests instead of exposing a second behavioral API.
+
 The protocol should support:
 
 - seed and scenario manifests;

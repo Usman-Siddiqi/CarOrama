@@ -13,6 +13,7 @@ internal static class InputBindings
     public const string RightTurnSignal = "vehicle_right_turn_signal";
     public const string HazardLights = "vehicle_hazard_lights";
     public const string Headlights = "vehicle_headlights";
+    public const string CycleCamera = "vehicle_cycle_camera";
     public const string Reset = "vehicle_reset";
     public const string NewSeed = "world_new_seed";
 
@@ -31,6 +32,7 @@ internal static class InputBindings
         AddKey(RightTurnSignal, Key.E);
         AddKey(HazardLights, Key.X);
         AddKey(Headlights, Key.H);
+        AddKey(CycleCamera, Key.C);
         AddKey(Reset, Key.R);
         AddKey(NewSeed, Key.N);
 
@@ -43,6 +45,7 @@ internal static class InputBindings
         AddJoyButton(RightTurnSignal, JoyButton.DpadRight);
         AddJoyButton(HazardLights, JoyButton.DpadDown);
         AddJoyButton(Headlights, JoyButton.DpadUp);
+        AddJoyButton(CycleCamera, JoyButton.RightShoulder);
         AddJoyButton(Reset, JoyButton.Start);
         AddJoyButton(NewSeed, JoyButton.Y);
     }

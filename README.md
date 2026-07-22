@@ -7,7 +7,7 @@ CarOrama is a long-term autonomous-driving simulation project. The current miles
 - Seeded, connected road graphs with local streets and multi-lane arterials, right-hand directed lanes, boundaries, centre lines, speed limits, stop lines, traffic controls, routes, and spawn points.
 - Runtime-built roads with yellow centre treatments, white lane dividers and edge lines, stop bars, zebra crossings, directional arrows, concrete curbs, sidewalks, signs, actuated traffic signals, and lightweight roadside scenery.
 - Vehicle-responsive traffic lights with lane-level approach detection, minimum/maximum green timing, passage-gap extension, yellow transition, and an all-red clearance interval.
-- A rigid-body electric vehicle with a single-speed motor model, configurable driven axles, regenerative and friction braking, ray-cast suspension, tire forces, collision handling, battery state of charge, exterior lighting, a follow camera, and a live front-bumper camera feed.
+- A rigid-body electric vehicle with a single-speed motor model, configurable driven axles, regenerative and friction braking, ray-cast suspension, tire forces, collision handling, battery state of charge, exterior lighting, a follow camera, and an independently switchable eight-camera exterior rig with a live engineering monitor.
 - Separate motion and exterior-light command boundaries that keep keyboard/controller input replaceable by future driving controllers.
 - Engine-independent domain code and automated tests for the road graph and electric drivetrain.
 
@@ -43,7 +43,7 @@ docs/                  decisions, implementation plan, and extension guidance
 
 The dependency direction is one-way: `CarOrama.Game -> CarOrama.Core`. Core code never references Godot. Future sensor, agent, scenario-runner, and telemetry adapters will depend on stable domain interfaces rather than player input or scene-node details.
 
-See [Architecture](docs/architecture.md), [Implementation plan](docs/implementation-plan.md), and the [Extension guide](docs/extending.md) for detailed boundaries and roadmap.
+See [Architecture](docs/architecture.md), [Implementation plan](docs/implementation-plan.md), and the [Extension guide](docs/extending.md) for the training-readiness gates, detailed boundaries, and roadmap.
 
 ## Prerequisites
 
@@ -75,6 +75,7 @@ Controls:
 | Left/right turn signal | Q / E | D-pad left/right |
 | Hazard lights | X | D-pad down |
 | Headlights | H | D-pad up |
+| Cycle monitored vehicle camera | C | Right shoulder button |
 | Reset vehicle | R | Start |
 | New deterministic seed | N | North face button |
 
@@ -98,12 +99,12 @@ To run the complete sequence with one command, set `CARORAMA_GODOT` to the Godot
 
 ## Current scope and next extensions
 
-This milestone does **not** contain driving agents, neural networks, reinforcement or imitation learning, perception sensors, traffic vehicles, pedestrians, or a traffic simulation.
+This milestone does **not** contain driving agents, neural networks, reinforcement or imitation learning, sensor recording or perception models, LiDAR/radar, traffic vehicles, pedestrians, or a traffic simulation.
 
 The next architectural increments should be:
 
-1. Add a fixed-step scenario runner with explicit reset/step semantics and a versioned observation/action DTO.
-2. Add ground-truth sensor interfaces before rendering camera, LiDAR, radar, GNSS, and IMU implementations.
+1. Implement a fixed-step scenario runner against the existing versioned reset/action/observation contracts.
+2. Add ground-truth sensor interfaces and synchronized capture before LiDAR, radar, GNSS, and IMU implementations.
 3. Add OpenDRIVE import/export and richer lane topology while keeping stable internal identifiers.
 4. Calibrate the vehicle model against published EV data and add repeatable skidpad, acceleration, braking, and energy tests.
 5. Add batched headless workers, dataset recording, evaluation metrics, and only then connect Python training code.

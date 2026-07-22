@@ -31,18 +31,60 @@ Exit condition: multiple seeds create valid, navigable road networks and the hea
 
 Exit condition: one vehicle can be driven through the generated network without a controller depending on scene internals.
 
-## Deliberately deferred
+## Milestone 3 — training readiness
+
+### 3A — vehicle sensing and control semantics
+
+- Add a configurable eight-camera exterior rig based on the documented 2024+ Model 3 locations: two windshield, two door-pillar, two front-fender, rear, and optional front-bumper positions.
+- Keep camera intrinsics, extrinsics, resolution, frequency, and activation independent of the on-screen monitor.
+- Replace direct driver control of regenerative and friction braking with a high-level deceleration request and a testable low-level brake allocator; retain actuator-level channels for diagnostics and plant integration.
+- Timestamp sensor samples from simulation time rather than wall-clock time.
+
+Exit condition: all camera channels have unique calibrated mounts and can be selected or captured without changing the vehicle controller.
+
+### 3B — deterministic episode protocol
+
+- Define versioned `Scenario`, `Reset`, `Action`, `Observation`, `StepResult`, termination, and metric contracts in `CarOrama.Core`.
+- Run control at a configured rate over fixed physics substeps.
+- Support seeded reset, explicit simulation ticks, headless operation, and faster-than-real-time stepping.
+- Keep transport independent: the same contracts must serve an in-process test runner and a future gRPC/shared-memory bridge.
+
+Exit condition: a test can reset a scenario and advance an exact number of ticks with repeatable structured results.
+
+### 3C — privileged-state driving baseline
+
+- Assign routes and expose lane-relative position, heading error, speed limit, route look-ahead, stop-line distance, and traffic-control state.
+- Add collision, lane-departure, wrong-way, speeding, signal/stop-sign violation, comfort, route-progress, and energy metrics.
+- Implement a non-learning pure-pursuit/Stanley steering baseline with longitudinal speed and stop control.
+- Record deterministic episodes and split procedural seeds into training, validation, and held-out test sets.
+
+Exit condition: the baseline completes unseen routes and produces trustworthy evaluation reports without rendered sensors.
+
+### 3D — traffic and scenario coverage
+
+- Add rule-aware road vehicles, pedestrians, cyclists, parked/occluding actors, and deterministic behavior controllers.
+- Add lane changes, merges, blocked lanes, varied friction, lighting, and weather scenarios.
+- Build curriculum tiers and reproducible regression cases from failures.
+
+Exit condition: scenarios exercise interaction and traffic-law decisions rather than empty-road lane following.
+
+### 3E — perception and learning bridge
+
+- Add synchronized camera frames, depth/semantic ground truth, LiDAR, radar, GNSS, and IMU with configurable noise, latency, and dropout.
+- Add dataset recording with calibration and build metadata.
+- Connect Python workers only after the in-process protocol and metrics pass determinism tests.
+- Begin with imitation learning from the privileged baseline, then reinforcement learning, and evaluate both against held-out seeds.
+
+Exit condition: policies can be trained and evaluated without scene-node access or train/test leakage.
+
+## Deliberately deferred until its milestone
 
 - Driving agents and learning algorithms.
-- Camera, LiDAR, radar, GNSS, IMU, and perception pipelines.
+- LiDAR, radar, GNSS, IMU, and learned perception pipelines.
 - Traffic vehicles, pedestrians, and traffic-flow simulation.
 - Dataset and distributed-training infrastructure.
 - High-fidelity tire calibration and production vehicle assets.
 
-## Future milestones
+## Work order
 
-1. Simulation clock, reset/step service, scenario manifest, and telemetry schema.
-2. Ground-truth queries and non-visual sensors.
-3. Rendered sensors with calibration/noise models.
-4. Traffic participants and rule-aware scenario generation.
-5. Python training client, vectorized workers, replay, and evaluation dashboards.
+Complete milestones 3A through 3E in order. A small privileged-state training experiment may begin after 3C; camera-based training must wait for synchronized sensor capture and scenario diversity in 3D/3E.

@@ -82,7 +82,9 @@ The tire model begins with clamped longitudinal and lateral force proportional t
 
 ## Future autonomous-driving boundary
 
-The planned simulation protocol will have explicit `Reset(Scenario)`, `Observe()`, and `Step(Action, ticks)` operations. Actions map to normalized steering, throttle, regenerative braking, and friction braking—the same `VehicleCommand` used manually. Observations will be timestamped bundles from sensor adapters plus route and optional privileged ground truth.
+The simulation protocol has explicit `Reset(Scenario)`, `Observe()`, and `Step(Action)` boundaries; each step advances one configured control tick containing an integer number of fixed physics ticks. Learned and manual controllers should request steering and longitudinal acceleration/deceleration; a vehicle-level allocator converts deceleration into available regeneration and any required friction braking. The existing actuator-level `VehicleCommand` remains the plant boundary and diagnostic interface. Observations are timestamped bundles from sensor adapters plus route and optional privileged ground truth.
+
+The exterior camera layout follows the locations in the [2024+ Model 3 owner's manual](https://www.tesla.com/ownersmanual/model3/en_us/GUID-682FF4A7-D083-4C95-925A-5EE3752F4865.html) for a vehicle equipped with the optional front camera: front bumper, rear plate, two windshield, two door-pillar, and two front-fender channels. Camera count and approximate coverage follow the public layout, while intrinsics and extrinsics remain CarOrama-owned configuration because production calibration values are not public. Sensor viewports are independent of the dashboard monitor and may remain disabled in privileged/headless runs to avoid rendering cost.
 
 Exterior lights use a separate `VehicleLightingCommand`. This allows a scenario controller to command headlights, indicators, and hazards without depending on input actions or lamp scene nodes; brake lamps remain a deterministic consequence of braking commands.
 

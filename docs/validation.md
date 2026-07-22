@@ -25,10 +25,22 @@ The core suite checks:
 - exterior-light commands normalize turn-signal state and resolve hazard outputs.
 - actuated signals honor minimum/maximum green, passage-gap, yellow, and all-red timing;
 - opposing approaches share a phase and conflicting approaches are never green together.
+- the eight-camera exterior layout has unique identifiers, valid calibration ranges, mirrored side mounts, and deterministic configuration;
+- simulation scenarios enforce an integer fixed physics/control cadence;
+- versioned reset, action, privileged-observation, metric, and terminal contracts reject invalid or non-finite state.
 
-The engine smoke test checks that a network is generated, scene geometry and a vehicle are instantiated, structured data validation passes, traffic-signal runtime states are available, exterior-light commands reach the vehicle, and a short fixed-step drivetrain scenario stays finite.
+The engine smoke test checks that a network is generated, scene geometry and a vehicle are instantiated, structured data validation passes, traffic-signal runtime states are available, all eight camera channels are registered without rendering in headless mode, exterior-light commands reach the vehicle, and a short fixed-step drivetrain scenario stays finite.
 
 The complete sequence is also available through `scripts/validate.ps1` on Windows or `scripts/validate.sh` on macOS/Linux. Set `CARORAMA_GODOT` when the Godot .NET executable is not on `PATH`.
+
+To launch a repeatable camera channel directly, pass its stable identifier:
+
+```powershell
+godot --path src/CarOrama.Game -- --camera-preview FenderLeft
+godot --path src/CarOrama.Game -- --camera-preview Rear
+```
+
+Valid identifiers are `FrontBumper`, `WindshieldMain`, `WindshieldWide`, `DoorPillarLeft`, `DoorPillarRight`, `FenderLeft`, `FenderRight`, and `Rear`.
 
 For a repeatable close inspection of generated intersection geometry, run:
 
@@ -66,6 +78,7 @@ For at least seeds `7`, `42`, and `2026`:
 10. Confirm regenerative braking slows the car and can increase state of charge slightly.
 11. Confirm friction braking works at full state of charge and at very low speed.
 12. Reset the vehicle and generate a new seed without restarting the application.
+13. Press `C` (or controller right shoulder) repeatedly and confirm the monitor cycles through two windshield, two pillar, two fender, front-bumper, and rear views with the expected direction and no view attached to the follow camera.
 
 ## Physics calibration status
 

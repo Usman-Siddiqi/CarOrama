@@ -1,9 +1,11 @@
 using CarOrama.Core.Control;
 using CarOrama.Core.Geometry;
 using CarOrama.Core.Roads;
+using CarOrama.Core.Sensors;
 using CarOrama.Core.Vehicles;
 using CarOrama.Game.Environment;
 using CarOrama.Game.Input;
+using CarOrama.Game.Sensors;
 using CarOrama.Game.UI;
 using CarOrama.Game.Validation;
 using CarOrama.Game.Vehicle;
@@ -18,9 +20,11 @@ public partial class Main : Node3D
     private ElectricVehicle? _vehicle;
     private FollowVehicleCamera? _followCamera;
     private TelemetryHud? _hud;
-    private FrontBumperCameraDisplay? _bumperCameraDisplay;
+    private VehicleCameraRig? _vehicleCameraRig;
+    private VehicleCameraMonitor? _vehicleCameraMonitor;
     private Transform3D _vehicleSpawnTransform;
     private IVehicleCommandSource? _commandSourceOverride;
+    private bool _cameraMonitorEnabled;
 
     public override async void _Ready()
     {
@@ -30,6 +34,12 @@ public partial class Main : Node3D
         {
             _commandSourceOverride = new ScriptedVehicleCommandSource();
         }
+
+        _cameraMonitorEnabled = !smokeTest &&
+            !HasArgument("--traffic-control-preview") &&
+            !HasArgument("--traffic-signal-preview") &&
+            !HasArgument("--intersection-preview") &&
+            !IsHeadlessDisplay();
 
         _seed = ReadSeed();
         BuildWorld();
@@ -151,13 +161,33 @@ public partial class Main : Node3D
         _hud.Vehicle = _vehicle;
         _hud.Seed = _seed;
 
-        if (_bumperCameraDisplay is null)
+        if (_vehicleCameraRig is null)
         {
-            _bumperCameraDisplay = new FrontBumperCameraDisplay();
-            AddChild(_bumperCameraDisplay);
+            _vehicleCameraRig = new VehicleCameraRig(CameraSensorLayout.CreateModel3Inspired());
+            AddChild(_vehicleCameraRig);
         }
 
-        _bumperCameraDisplay.Target = _vehicle;
+        _vehicleCameraRig.Target = _vehicle;
+
+        if (_cameraMonitorEnabled)
+        {
+            if (_vehicleCameraMonitor is null)
+            {
+                _vehicleCameraMonitor = new VehicleCameraMonitor();
+                AddChild(_vehicleCameraMonitor);
+            }
+
+            _vehicleCameraMonitor.Rig = _vehicleCameraRig;
+            _vehicleCameraMonitor.SetPreviewEnabled(true);
+            if (ReadCameraPreview() is { } cameraPreview)
+            {
+                _vehicleCameraMonitor.SelectCamera(cameraPreview);
+            }
+        }
+        else
+        {
+            _vehicleCameraRig.PreviewChannel = null;
+        }
     }
 
     private void AddIntersectionPreviewCamera()
@@ -281,9 +311,9 @@ public partial class Main : Node3D
             _vehicle.Freeze = true;
         }
 
-        if (_bumperCameraDisplay is not null)
+        if (_vehicleCameraMonitor is not null)
         {
-            _bumperCameraDisplay.Visible = false;
+            _vehicleCameraMonitor.SetPreviewEnabled(false);
         }
     }
 
@@ -330,6 +360,10 @@ public partial class Main : Node3D
                     control.FacingDirection) > 0.0;
                 return isFarSide && signalHead.SignalHeadCount == control.IncomingLaneIds.Count;
             });
+        var cameraRigValid = _vehicleCameraRig is not null &&
+            _vehicleCameraRig.Specifications.Count == 8 &&
+            _vehicleCameraRig.Specifications.Select(camera => camera.Id).Distinct().Count() == 8 &&
+            _vehicleCameraRig.RenderingChannelCount == 0;
 
         if (!result.IsValid ||
             _roadWorld.Network.SpawnPoints.Count == 0 ||
@@ -339,6 +373,7 @@ public partial class Main : Node3D
             !vehicleAccelerated ||
             !signalStatesValid ||
             !signalPlacementsValid ||
+            !cameraRigValid ||
             !_vehicle.LastLightingCommand.HeadlightsEnabled ||
             !_vehicle.LastLightingCommand.HazardLightsEnabled)
         {
@@ -346,6 +381,7 @@ public partial class Main : Node3D
                 $"Smoke test failed: {string.Join("; ", result.Errors)} " +
                 $"finite={finitePosition}, moved={vehicleMoved}, peakSpeed={_vehicle.PeakSpeedMetersPerSecond:F2} m/s, " +
                 $"signals={signalStatesValid}, signalPlacement={signalPlacementsValid}, " +
+                $"cameraRig={cameraRigValid}, " +
                 $"lights={_vehicle.LastLightingCommand}.");
             GetTree().Quit(1);
             return;
@@ -370,4 +406,25 @@ public partial class Main : Node3D
     }
 
     private static bool HasArgument(string expected) => OS.GetCmdlineUserArgs().Contains(expected);
+
+    private static CameraSensorId? ReadCameraPreview()
+    {
+        var arguments = OS.GetCmdlineUserArgs();
+        for (var index = 0; index + 1 < arguments.Length; index++)
+        {
+            if (arguments[index] == "--camera-preview" &&
+                Enum.TryParse<CameraSensorId>(arguments[index + 1], ignoreCase: true, out var cameraId) &&
+                Enum.IsDefined(cameraId))
+            {
+                return cameraId;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsHeadlessDisplay() => string.Equals(
+        DisplayServer.GetName(),
+        "headless",
+        StringComparison.OrdinalIgnoreCase);
 }
