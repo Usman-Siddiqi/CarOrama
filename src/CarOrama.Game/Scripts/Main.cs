@@ -123,6 +123,10 @@ public partial class Main : Node3D
         _vehicle = new ElectricVehicle(new VehicleSpecification(), commandSource);
         AddChild(_vehicle);
         _vehicle.SetResetTransform(_vehicleSpawnTransform);
+        if (_roadWorld?.TrafficSignals is not null)
+        {
+            _roadWorld.TrafficSignals.ObservedVehicle = _vehicle;
+        }
 
         if (_followCamera is null)
         {
@@ -263,6 +267,9 @@ public partial class Main : Node3D
         var finitePosition = float.IsFinite(position.X) && float.IsFinite(position.Y) && float.IsFinite(position.Z);
         var vehicleMoved = position.DistanceTo(startingPosition) > 1.0f;
         var vehicleAccelerated = _vehicle.PeakSpeedMetersPerSecond > 1.0;
+        var signalStatesValid = _roadWorld.Network.TrafficControls
+            .Where(control => control.Kind == TrafficControlKind.TrafficLight)
+            .All(control => Enum.IsDefined(_roadWorld.GetTrafficSignalState(control.Id)));
 
         if (!result.IsValid ||
             _roadWorld.Network.SpawnPoints.Count == 0 ||
@@ -270,13 +277,14 @@ public partial class Main : Node3D
             !finitePosition ||
             !vehicleMoved ||
             !vehicleAccelerated ||
+            !signalStatesValid ||
             !_vehicle.LastLightingCommand.HeadlightsEnabled ||
             !_vehicle.LastLightingCommand.HazardLightsEnabled)
         {
             GD.PushError(
                 $"Smoke test failed: {string.Join("; ", result.Errors)} " +
                 $"finite={finitePosition}, moved={vehicleMoved}, peakSpeed={_vehicle.PeakSpeedMetersPerSecond:F2} m/s, " +
-                $"lights={_vehicle.LastLightingCommand}.");
+                $"signals={signalStatesValid}, lights={_vehicle.LastLightingCommand}.");
             GetTree().Quit(1);
             return;
         }

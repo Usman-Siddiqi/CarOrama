@@ -61,6 +61,8 @@ Each directed lane stores:
 
 Intersections store approaches, controls, and positions. A traffic control belongs to one road approach and references every incoming lane it governs; its visual sign or signal is placed once beyond the outer-right road edge. Spawn points reference a directed lane and heading. Routes are graph searches over lane successors, so the same information used to draw roads is usable by navigation and evaluation code.
 
+Traffic-light intersections use a deterministic two-phase actuated controller. Opposing approaches share a protected phase, while perpendicular approaches remain red. Lane-level virtual detectors cover the final 34 metres before each stop line. Competing demand triggers a change only after minimum green; continuing traffic can extend green to a maximum, followed by a 3.5-second yellow and a 1-second all-red clearance interval. With no competing demand, the active phase rests on green. Timing and state transitions live in `CarOrama.Core`, independent of Godot rendering, and the current runtime state is available through `RoadWorld.GetTrafficSignalState` for future rule evaluation and agent observations.
+
 The current topology is intentionally simple. Future generators can implement suburbs, arterials, roundabouts, ramps, grades, and OpenDRIVE import behind `IRoadNetworkGenerator` without changing consumers.
 
 ## Vehicle representation

@@ -5,7 +5,8 @@ CarOrama is a long-term autonomous-driving simulation project. The current miles
 ## Current capabilities
 
 - Seeded, connected road graphs with local streets and multi-lane arterials, right-hand directed lanes, boundaries, centre lines, speed limits, stop lines, traffic controls, routes, and spawn points.
-- Runtime-built roads with yellow centre treatments, white lane dividers and edge lines, stop bars, zebra crossings, directional arrows, curbs, sidewalks, signs, signals, and lightweight roadside scenery.
+- Runtime-built roads with yellow centre treatments, white lane dividers and edge lines, stop bars, zebra crossings, directional arrows, concrete curbs, sidewalks, signs, actuated traffic signals, and lightweight roadside scenery.
+- Vehicle-responsive traffic lights with lane-level approach detection, minimum/maximum green timing, passage-gap extension, yellow transition, and an all-red clearance interval.
 - A rigid-body electric vehicle with a single-speed motor model, configurable driven axles, regenerative and friction braking, ray-cast suspension, tire forces, collision handling, battery state of charge, exterior lighting, a follow camera, and a live front-bumper camera feed.
 - Separate motion and exterior-light command boundaries that keep keyboard/controller input replaceable by future driving controllers.
 - Engine-independent domain code and automated tests for the road graph and electric drivetrain.
