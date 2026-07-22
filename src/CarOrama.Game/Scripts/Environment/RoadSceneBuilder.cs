@@ -56,7 +56,7 @@ public sealed class RoadSceneBuilder
 
         foreach (var control in network.TrafficControls)
         {
-            var signalHead = AddTrafficControl(controls, control);
+            var signalHead = AddTrafficControl(network, controls, control);
             if (signalHead is not null)
             {
                 world.RegisterTrafficSignalHead(signalHead);
@@ -858,40 +858,114 @@ public sealed class RoadSceneBuilder
             material));
     }
 
-    private TrafficSignalHead? AddTrafficControl(Node3D parent, TrafficControl control)
+    private TrafficSignalHead? AddTrafficControl(
+        RoadNetwork network,
+        Node3D parent,
+        TrafficControl control)
     {
-        Node3D root = control.Kind == TrafficControlKind.TrafficLight
-            ? new TrafficSignalHead(control.Id)
-            : new Node3D { Name = control.Id };
-        root.Position = ToWorld(control.Position);
-        root.Rotation = new Vector3(
-            0.0f,
-            Mathf.Atan2((float)control.FacingDirection.X, (float)control.FacingDirection.Y),
-            0.0f);
-        parent.AddChild(root);
-
         if (control.Kind == TrafficControlKind.StopSign)
         {
+            var root = new Node3D
+            {
+                Name = control.Id,
+                Position = ToWorld(control.Position),
+                Rotation = new Vector3(
+                    0.0f,
+                    Mathf.Atan2((float)control.FacingDirection.X, (float)control.FacingDirection.Y),
+                    0.0f),
+            };
+            parent.AddChild(root);
             AddStopSign(root);
             return null;
         }
 
-        var pole = PrimitiveFactory.Cylinder("Pole", 0.075f, 2.2f, _pole, 12);
-        pole.Position = new Vector3(0.0f, 1.1f, 0.0f);
-        root.AddChild(pole);
+        return AddOverheadTrafficSignal(network, parent, control);
+    }
+
+    private TrafficSignalHead AddOverheadTrafficSignal(
+        RoadNetwork network,
+        Node3D parent,
+        TrafficControl control)
+    {
+        const double poleRoadClearance = 0.9;
+        const double poleIntersectionClearance = 0.8;
+        const float mastHeight = 5.35f;
+
+        var node = network.GetNode(control.IntersectionNodeId);
+        var approachSegment = network.GetSegment(control.ApproachSegmentId);
+        var approachDirection = control.FacingDirection.Normalized();
+        var left = approachDirection.PerpendicularLeft();
+        var right = left * -1.0;
+        var roadHalfWidth = approachSegment.WidthMeters * 0.5;
+        var poleLateralOffset = roadHalfWidth + poleRoadClearance;
+        var farSideOffset = GetIntersectionCutoutHalfWidth(network, node) + poleIntersectionClearance;
+        var polePosition = node.Position +
+            (approachDirection * farSideOffset) +
+            (right * poleLateralOffset);
+        var signalRoot = new TrafficSignalHead(control.Id)
+        {
+            Position = ToWorld(polePosition),
+            Rotation = new Vector3(
+                0.0f,
+                Mathf.Atan2((float)approachDirection.X, (float)approachDirection.Y),
+                0.0f),
+        };
+        parent.AddChild(signalRoot);
+
+        var pole = PrimitiveFactory.Cylinder("MastPole", 0.11f, mastHeight, _pole, 16);
+        pole.Position = new Vector3(0.0f, mastHeight * 0.5f, 0.0f);
+        signalRoot.AddChild(pole);
+
+        var mastLength = (float)(approachSegment.WidthMeters + (poleRoadClearance * 2.0));
+        signalRoot.AddChild(PrimitiveFactory.Box(
+            "MastArm",
+            new Vector3(mastLength, 0.18f, 0.18f),
+            new Transform3D(
+                Basis.Identity,
+                new Vector3(mastLength * 0.5f, mastHeight, 0.0f)),
+            _pole));
+
+        var incomingLanes = control.IncomingLaneIds
+            .Select(network.GetLane)
+            .OrderBy(lane => Vector2D.Dot(lane.CenterLine[^1] - node.Position, left))
+            .ToArray();
+        for (var index = 0; index < incomingLanes.Length; index++)
+        {
+            var lane = incomingLanes[index];
+            var laneLateralOffset = Vector2D.Dot(lane.CenterLine[^1] - node.Position, left);
+            var localX = (float)(poleLateralOffset + laneLateralOffset);
+            AddOverheadSignalHead(signalRoot, index, localX, mastHeight);
+        }
+
+        return signalRoot;
+    }
+
+    private void AddOverheadSignalHead(
+        TrafficSignalHead signalRoot,
+        int index,
+        float localX,
+        float mastHeight)
+    {
+        const float housingCenterHeight = 4.73f;
+
+        signalRoot.AddChild(PrimitiveFactory.Box(
+            $"Hanger:{index}",
+            new Vector3(0.08f, mastHeight - housingCenterHeight, 0.08f),
+            new Transform3D(
+                Basis.Identity,
+                new Vector3(localX, (mastHeight + housingCenterHeight) * 0.5f, 0.0f)),
+            _pole));
 
         var housing = PrimitiveFactory.Box(
-            "SignalHousing",
-            new Vector3(0.4f, 1.05f, 0.3f),
-            new Transform3D(Basis.Identity, new Vector3(0.0f, 2.25f, 0.0f)),
+            $"SignalHousing:{index}",
+            new Vector3(0.46f, 1.08f, 0.32f),
+            new Transform3D(Basis.Identity, new Vector3(localX, housingCenterHeight, 0.0f)),
             _signalHousing);
-        root.AddChild(housing);
+        signalRoot.AddChild(housing);
         var redLamp = AddSignalLamp(housing, "Red", 0.32f);
         var yellowLamp = AddSignalLamp(housing, "Yellow", 0.0f);
         var greenLamp = AddSignalLamp(housing, "Green", -0.32f);
-        var signalHead = (TrafficSignalHead)root;
-        signalHead.SetLamps(redLamp, yellowLamp, greenLamp);
-        return signalHead;
+        signalRoot.AddLamps(redLamp, yellowLamp, greenLamp);
     }
 
     private void AddStopSign(Node3D root)

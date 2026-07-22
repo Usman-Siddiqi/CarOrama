@@ -9,9 +9,7 @@ public sealed partial class TrafficSignalHead : Node3D
     private static readonly Color YellowColor = new("f0b323");
     private static readonly Color GreenColor = new("22c55e");
 
-    private MeshInstance3D? _redLamp;
-    private MeshInstance3D? _yellowLamp;
-    private MeshInstance3D? _greenLamp;
+    private readonly List<LampGroup> _lampGroups = [];
 
     public TrafficSignalHead(string controlId)
     {
@@ -23,11 +21,11 @@ public sealed partial class TrafficSignalHead : Node3D
 
     public TrafficSignalState State { get; private set; } = TrafficSignalState.Red;
 
-    public void SetLamps(MeshInstance3D redLamp, MeshInstance3D yellowLamp, MeshInstance3D greenLamp)
+    public int SignalHeadCount => _lampGroups.Count;
+
+    public void AddLamps(MeshInstance3D redLamp, MeshInstance3D yellowLamp, MeshInstance3D greenLamp)
     {
-        _redLamp = redLamp;
-        _yellowLamp = yellowLamp;
-        _greenLamp = greenLamp;
+        _lampGroups.Add(new LampGroup(redLamp, yellowLamp, greenLamp));
         SetState(State, force: true);
     }
 
@@ -39,9 +37,12 @@ public sealed partial class TrafficSignalHead : Node3D
         }
 
         State = state;
-        ApplyLamp(_redLamp, RedColor, state == TrafficSignalState.Red);
-        ApplyLamp(_yellowLamp, YellowColor, state == TrafficSignalState.Yellow);
-        ApplyLamp(_greenLamp, GreenColor, state == TrafficSignalState.Green);
+        foreach (var lamps in _lampGroups)
+        {
+            ApplyLamp(lamps.Red, RedColor, state == TrafficSignalState.Red);
+            ApplyLamp(lamps.Yellow, YellowColor, state == TrafficSignalState.Yellow);
+            ApplyLamp(lamps.Green, GreenColor, state == TrafficSignalState.Green);
+        }
     }
 
     private static void ApplyLamp(MeshInstance3D? lamp, Color color, bool active)
@@ -56,4 +57,9 @@ public sealed partial class TrafficSignalHead : Node3D
             0.42f,
             active);
     }
+
+    private sealed record LampGroup(
+        MeshInstance3D Red,
+        MeshInstance3D Yellow,
+        MeshInstance3D Green);
 }

@@ -1,4 +1,5 @@
 using CarOrama.Core.Control;
+using CarOrama.Core.Geometry;
 using CarOrama.Core.Roads;
 using CarOrama.Core.Vehicles;
 using CarOrama.Game.Environment;
@@ -36,6 +37,10 @@ public partial class Main : Node3D
         if (HasArgument("--traffic-control-preview"))
         {
             AddTrafficControlPreviewCamera();
+        }
+        else if (HasArgument("--traffic-signal-preview"))
+        {
+            AddTrafficSignalPreviewCamera();
         }
         else if (HasArgument("--intersection-preview"))
         {
@@ -223,6 +228,47 @@ public partial class Main : Node3D
         PreparePreview();
     }
 
+    private void AddTrafficSignalPreviewCamera()
+    {
+        if (_roadWorld is null)
+        {
+            return;
+        }
+
+        var control = _roadWorld.Network.TrafficControls
+            .Where(candidate => candidate.Kind == TrafficControlKind.TrafficLight)
+            .OrderByDescending(candidate => _roadWorld.Network.GetSegment(candidate.ApproachSegmentId).WidthMeters)
+            .ThenBy(candidate => candidate.Id, StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (control is null)
+        {
+            AddIntersectionPreviewCamera();
+            return;
+        }
+
+        var intersection = _roadWorld.Network.Intersections
+            .Single(candidate => candidate.NodeId == control.IntersectionNodeId);
+        var target = new Vector3(
+            (float)intersection.Position.X,
+            3.1f,
+            (float)intersection.Position.Y);
+        var approachDirection = new Vector3(
+            (float)control.FacingDirection.X,
+            0.0f,
+            (float)control.FacingDirection.Y).Normalized();
+        var camera = new Camera3D
+        {
+            Name = "TrafficSignalPreviewCamera",
+            Position = target - (approachDirection * 19.0f) + (Vector3.Up * 2.2f),
+            Current = true,
+            Far = 250.0f,
+            Fov = 52.0f,
+        };
+        AddChild(camera);
+        camera.LookAt(target, Vector3.Up);
+        PreparePreview();
+    }
+
     private void PreparePreview()
     {
         if (_hud is not null)
@@ -270,6 +316,20 @@ public partial class Main : Node3D
         var signalStatesValid = _roadWorld.Network.TrafficControls
             .Where(control => control.Kind == TrafficControlKind.TrafficLight)
             .All(control => Enum.IsDefined(_roadWorld.GetTrafficSignalState(control.Id)));
+        var signalPlacementsValid = _roadWorld.Network.TrafficControls
+            .Where(control => control.Kind == TrafficControlKind.TrafficLight)
+            .All(control =>
+            {
+                var signalHead = _roadWorld.GetTrafficSignalHead(control.Id);
+                var intersection = _roadWorld.Network.Intersections
+                    .Single(candidate => candidate.NodeId == control.IntersectionNodeId);
+                var intersectionPosition = new Vector2D(intersection.Position.X, intersection.Position.Y);
+                var signalPosition = new Vector2D(signalHead.GlobalPosition.X, signalHead.GlobalPosition.Z);
+                var isFarSide = Vector2D.Dot(
+                    signalPosition - intersectionPosition,
+                    control.FacingDirection) > 0.0;
+                return isFarSide && signalHead.SignalHeadCount == control.IncomingLaneIds.Count;
+            });
 
         if (!result.IsValid ||
             _roadWorld.Network.SpawnPoints.Count == 0 ||
@@ -278,13 +338,15 @@ public partial class Main : Node3D
             !vehicleMoved ||
             !vehicleAccelerated ||
             !signalStatesValid ||
+            !signalPlacementsValid ||
             !_vehicle.LastLightingCommand.HeadlightsEnabled ||
             !_vehicle.LastLightingCommand.HazardLightsEnabled)
         {
             GD.PushError(
                 $"Smoke test failed: {string.Join("; ", result.Errors)} " +
                 $"finite={finitePosition}, moved={vehicleMoved}, peakSpeed={_vehicle.PeakSpeedMetersPerSecond:F2} m/s, " +
-                $"signals={signalStatesValid}, lights={_vehicle.LastLightingCommand}.");
+                $"signals={signalStatesValid}, signalPlacement={signalPlacementsValid}, " +
+                $"lights={_vehicle.LastLightingCommand}.");
             GetTree().Quit(1);
             return;
         }

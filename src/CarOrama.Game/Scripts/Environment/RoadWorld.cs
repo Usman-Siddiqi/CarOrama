@@ -23,6 +23,8 @@ public partial class RoadWorld : Node3D
         TrafficSignals?.GetState(controlId) ??
         throw new InvalidOperationException("This road world has no active traffic signals.");
 
+    public TrafficSignalHead GetTrafficSignalHead(string controlId) => _trafficSignalHeads[controlId];
+
     public void RegisterTrafficSignalHead(TrafficSignalHead head)
     {
         ArgumentNullException.ThrowIfNull(head);

@@ -44,6 +44,12 @@ For a close inspection of stop-sign face, border, text, pole, orientation, and r
 godot --path src/CarOrama.Game -- --traffic-control-preview
 ```
 
+For a driver's-eye inspection of far-side mast arms, overhead lane alignment, and synchronized signal heads, run:
+
+```powershell
+godot --path src/CarOrama.Game -- --traffic-signal-preview
+```
+
 ## Manual checks
 
 For at least seeds `7`, `42`, and `2026`:
@@ -51,7 +57,7 @@ For at least seeds `7`, `42`, and `2026`:
 1. Confirm every road has a yellow centre treatment and white edge lines.
 2. Confirm arterial roads have multiple lanes per direction, dashed white lane dividers, and aligned arrows.
 3. Confirm stop bars and zebra crossings remain outside the intersection conflict area, including local-to-arterial junctions.
-4. Confirm each approach has one stop sign or traffic signal beyond its outer-right curb, facing incoming traffic.
+4. Confirm stop signs sit beside the near-side stop line and traffic lights hang above governed lanes on the far side, facing incoming traffic.
 5. Approach a red signal and confirm demand causes the perpendicular green to progress through yellow, all-red, and then the requested green.
 6. Confirm a green phase remains active when no vehicle is waiting on a conflicting approach.
 7. Drive a full loop with keyboard and controller.
