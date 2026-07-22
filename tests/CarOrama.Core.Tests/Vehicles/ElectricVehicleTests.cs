@@ -10,11 +10,13 @@ public sealed class ElectricVehicleTests
     public void CommandsClampAndRejectNonFiniteInput()
     {
         var command = VehicleCommand.Create(double.PositiveInfinity, 2.0, -1.0, double.NaN);
+        var reverse = VehicleCommand.Create(0.0, -2.0, 0.0, 0.0);
 
         Assert.Equal(0.0, command.Steering);
         Assert.Equal(1.0, command.Throttle);
         Assert.Equal(0.0, command.RegenerativeBrake);
         Assert.Equal(0.0, command.FrictionBrake);
+        Assert.Equal(-1.0, reverse.Throttle);
     }
 
     [Fact]
@@ -121,6 +123,53 @@ public sealed class ElectricVehicleTests
         Assert.True(model.State.SpeedMetersPerSecond < speedBefore * 0.25);
     }
 
+    [Fact]
+    public void DefaultVehicleReproducesWaymoClassZeroToOneHundredTime()
+    {
+        var model = new LongitudinalVehicleModel(new VehicleSpecification());
+
+        AccelerateToKilometersPerHour(model, 100.0);
+
+        Assert.InRange(model.State.TimeSeconds, 4.65, 5.05);
+    }
+
+    [Fact]
+    public void FullRegenerationProducesComfortableOnePedalDeceleration()
+    {
+        var model = new LongitudinalVehicleModel(new VehicleSpecification());
+        AccelerateToKilometersPerHour(model, 100.0);
+        var speedBefore = model.State.SpeedMetersPerSecond;
+        const double step = 1.0 / 120.0;
+
+        for (var index = 0; index < 120; index++)
+        {
+            model.Step(VehicleCommand.Create(0.0, 0.0, 1.0, 0.0), step);
+        }
+
+        var averageDeceleration = speedBefore - model.State.SpeedMetersPerSecond;
+        Assert.InRange(averageDeceleration, 1.6, 2.3);
+    }
+
+    [Fact]
+    public void EmergencyBrakeStopsFromOneHundredInRealisticDryRoadDistance()
+    {
+        var model = new LongitudinalVehicleModel(new VehicleSpecification());
+        AccelerateToKilometersPerHour(model, 100.0);
+        var brakingStartDistance = model.State.DistanceMeters;
+        var brakingStartTime = model.State.TimeSeconds;
+        const double step = 1.0 / 120.0;
+
+        while (model.State.SpeedMetersPerSecond > 0.01 && model.State.TimeSeconds - brakingStartTime < 10.0)
+        {
+            model.Step(VehicleCommand.Create(0.0, 0.0, 0.0, 1.0), step);
+        }
+
+        var stoppingDistance = model.State.DistanceMeters - brakingStartDistance;
+        var stoppingTime = model.State.TimeSeconds - brakingStartTime;
+        Assert.InRange(stoppingDistance, 42.0, 50.0);
+        Assert.InRange(stoppingTime, 3.0, 3.6);
+    }
+
     [Theory]
     [InlineData(DrivetrainLayout.FrontWheelDrive)]
     [InlineData(DrivetrainLayout.RearWheelDrive)]
@@ -133,6 +182,52 @@ public sealed class ElectricVehicleTests
 
         Assert.True(double.IsFinite(output.DriveForceNewtons));
         Assert.True(output.DriveForceNewtons > 0.0);
+    }
+
+    [Fact]
+    public void ReverseDemandProducesLimitedBackwardDriveForceAtLowSpeed()
+    {
+        var specification = new VehicleSpecification();
+        var drivetrain = new ElectricDrivetrain(specification);
+
+        var output = drivetrain.Evaluate(VehicleCommand.Create(0.0, -1.0, 0.0, 0.0), 0.0, 1.0 / 120.0);
+        var maximumReverseForce = specification.MassKilograms
+            * specification.MaximumReverseAccelerationMetersPerSecondSquared;
+
+        Assert.True(output.DriveForceNewtons < 0.0);
+        Assert.InRange(Math.Abs(output.DriveForceNewtons), 1.0, maximumReverseForce + 0.01);
+    }
+
+    [Fact]
+    public void ReverseDemandRegenerativelyBrakesBeforeChangingDirection()
+    {
+        var specification = new VehicleSpecification();
+        var drivetrain = new ElectricDrivetrain(specification);
+        var forwardWheelSpeed = 10.0 / specification.WheelRadiusMeters;
+
+        var output = drivetrain.Evaluate(
+            VehicleCommand.Create(0.0, -1.0, 0.0, 0.0),
+            forwardWheelSpeed,
+            1.0 / 120.0);
+
+        Assert.Equal(0.0, output.DriveForceNewtons);
+        Assert.True(output.RegenerativeBrakeForceNewtons > 0.0);
+    }
+
+    [Fact]
+    public void ReverseDriveStopsApplyingTorqueAtConfiguredSpeedLimit()
+    {
+        var specification = new VehicleSpecification();
+        var drivetrain = new ElectricDrivetrain(specification);
+        var reverseWheelSpeed = -specification.MaximumReverseSpeedMetersPerSecond
+            / specification.WheelRadiusMeters;
+
+        var output = drivetrain.Evaluate(
+            VehicleCommand.Create(0.0, -1.0, 0.0, 0.0),
+            reverseWheelSpeed,
+            1.0 / 120.0);
+
+        Assert.Equal(0.0, output.DriveForceNewtons);
     }
 
     [Fact]
@@ -170,5 +265,19 @@ public sealed class ElectricVehicleTests
 
         Assert.Equal(18_000.0, brake.GetForceNewtons(2.0));
         Assert.Equal(0.0, brake.GetForceNewtons(-1.0));
+    }
+
+    private static void AccelerateToKilometersPerHour(LongitudinalVehicleModel model, double targetKilometersPerHour)
+    {
+        var targetMetersPerSecond = targetKilometersPerHour / 3.6;
+        const double step = 1.0 / 120.0;
+        while (model.State.SpeedMetersPerSecond < targetMetersPerSecond && model.State.TimeSeconds < 10.0)
+        {
+            model.Step(VehicleCommand.Create(0.0, 1.0, 0.0, 0.0), step);
+        }
+
+        Assert.True(
+            model.State.SpeedMetersPerSecond >= targetMetersPerSecond,
+            $"Vehicle failed to reach {targetKilometersPerHour:F0} km/h within ten seconds.");
     }
 }

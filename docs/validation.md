@@ -50,6 +50,12 @@ godot --path src/CarOrama.Game -- --intersection-preview
 
 This camera prioritizes the widest multi-lane junction and freezes the vehicle so road surfaces, sidewalk termination, curbs, markings, and traffic controls can be inspected without driving to the location.
 
+To inspect a generated ninety-degree bend and verify that its asphalt, markings, curbs, and sidewalks share the same curve, run:
+
+```powershell
+godot --path src/CarOrama.Game -- --corner-preview
+```
+
 For a close inspection of stop-sign face, border, text, pole, orientation, and roadside placement, run:
 
 ```powershell
@@ -82,4 +88,13 @@ For at least seeds `7`, `42`, and `2026`:
 
 ## Physics calibration status
 
-Current parameters are plausible engineering starting values and are covered by invariant tests. They are not yet calibrated against a specific production EV. Future acceptance tests should use published mass, wheelbase, torque/power curves, acceleration, coast-down, skidpad, braking distance, and consumption data with stated tolerances.
+The default vehicle is calibrated to the Jaguar I-PACE class used in Waymo's fleet. Its baseline uses the published 2,208 kg EU mass, 294 kW peak power, 696 Nm peak torque, 2.99 m wheelbase, and 4.8-second 0-100 km/h time. The drivetrain keeps explicit aerodynamic drag, rolling resistance, launch control, tire grip, regenerative braking, and friction braking; Godot's generic linear and angular damping are disabled so they do not duplicate those forces.
+
+Regression tests require:
+
+- 0-100 km/h in 4.65-5.05 seconds;
+- full regeneration to average 1.6-2.3 m/s² of deceleration during the first second from 100 km/h;
+- a full emergency stop from 100 km/h in 42-50 meters and 3.0-3.6 seconds; and
+- combined longitudinal/lateral tire demand to remain inside the configured dry-road friction circle.
+
+Holding `S`/Down while moving forward ramps in the lower regenerative limit; once the vehicle slows below 0.5 m/s, the same input selects reverse. Reverse is limited to 2.5 m/s² and 30 km/h. `Space` is intentionally the full emergency friction brake.

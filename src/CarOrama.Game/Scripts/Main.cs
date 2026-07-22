@@ -38,6 +38,7 @@ public partial class Main : Node3D
         _cameraMonitorEnabled = !smokeTest &&
             !HasArgument("--traffic-control-preview") &&
             !HasArgument("--traffic-signal-preview") &&
+            !HasArgument("--corner-preview") &&
             !HasArgument("--intersection-preview") &&
             !IsHeadlessDisplay();
 
@@ -51,6 +52,10 @@ public partial class Main : Node3D
         else if (HasArgument("--traffic-signal-preview"))
         {
             AddTrafficSignalPreviewCamera();
+        }
+        else if (HasArgument("--corner-preview"))
+        {
+            AddCornerPreviewCamera();
         }
         else if (HasArgument("--intersection-preview"))
         {
@@ -215,6 +220,42 @@ public partial class Main : Node3D
             Current = true,
             Far = 500.0f,
             Fov = 58.0f,
+        };
+        AddChild(camera);
+        camera.LookAt(target, Vector3.Up);
+        PreparePreview();
+    }
+
+    private void AddCornerPreviewCamera()
+    {
+        if (_roadWorld is null)
+        {
+            return;
+        }
+
+        var intersection = _roadWorld.Network.Intersections
+            .Where(candidate => candidate.Kind == IntersectionKind.Corner)
+            .OrderByDescending(candidate => candidate.IncomingLaneIds
+                .Select(_roadWorld.Network.GetLane)
+                .Select(lane => _roadWorld.Network.GetSegment(lane.SegmentId).WidthMeters)
+                .DefaultIfEmpty(0.0)
+                .Max())
+            .ThenBy(candidate => candidate.NodeId, StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (intersection is null)
+        {
+            AddIntersectionPreviewCamera();
+            return;
+        }
+
+        var target = new Vector3((float)intersection.Position.X, 0.0f, (float)intersection.Position.Y);
+        var camera = new Camera3D
+        {
+            Name = "CornerPreviewCamera",
+            Position = target + new Vector3(14.0f, 16.0f, 18.0f),
+            Current = true,
+            Far = 300.0f,
+            Fov = 54.0f,
         };
         AddChild(camera);
         camera.LookAt(target, Vector3.Up);

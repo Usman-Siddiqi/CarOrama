@@ -7,7 +7,7 @@ internal static class InputBindings
     public const string SteerLeft = "vehicle_steer_left";
     public const string SteerRight = "vehicle_steer_right";
     public const string Throttle = "vehicle_throttle";
-    public const string RegenerativeBrake = "vehicle_regenerative_brake";
+    public const string BrakeReverse = "vehicle_brake_reverse";
     public const string FrictionBrake = "vehicle_friction_brake";
     public const string LeftTurnSignal = "vehicle_left_turn_signal";
     public const string RightTurnSignal = "vehicle_right_turn_signal";
@@ -25,8 +25,8 @@ internal static class InputBindings
         AddKey(SteerRight, Key.Right);
         AddKey(Throttle, Key.W);
         AddKey(Throttle, Key.Up);
-        AddKey(RegenerativeBrake, Key.S);
-        AddKey(RegenerativeBrake, Key.Down);
+        AddKey(BrakeReverse, Key.S);
+        AddKey(BrakeReverse, Key.Down);
         AddKey(FrictionBrake, Key.Space);
         AddKey(LeftTurnSignal, Key.Q);
         AddKey(RightTurnSignal, Key.E);
@@ -39,7 +39,7 @@ internal static class InputBindings
         AddJoyAxis(SteerLeft, JoyAxis.LeftX, -1.0f);
         AddJoyAxis(SteerRight, JoyAxis.LeftX, 1.0f);
         AddJoyAxis(Throttle, JoyAxis.TriggerRight, 1.0f);
-        AddJoyAxis(RegenerativeBrake, JoyAxis.TriggerLeft, 1.0f);
+        AddJoyAxis(BrakeReverse, JoyAxis.TriggerLeft, 1.0f);
         AddJoyButton(FrictionBrake, JoyButton.A);
         AddJoyButton(LeftTurnSignal, JoyButton.DpadLeft);
         AddJoyButton(RightTurnSignal, JoyButton.DpadRight);

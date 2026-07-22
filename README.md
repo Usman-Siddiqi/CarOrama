@@ -70,8 +70,8 @@ Controls:
 |---|---|---|
 | Steer | A/D or Left/Right | Left stick |
 | Throttle | W or Up | Right trigger |
-| Regenerative braking | S or Down | Left trigger |
-| Friction brake | Space | South face button |
+| Brake / reverse | S or Down | Left trigger |
+| Emergency friction brake | Space | South face button |
 | Left/right turn signal | Q / E | D-pad left/right |
 | Hazard lights | X | D-pad down |
 | Headlights | H | D-pad up |

@@ -90,16 +90,6 @@ public sealed class RoadSceneBuilder
         Node3D sidewalks,
         Node3D scenery)
     {
-        var start = ToWorld(segment.CenterLine[0]);
-        var end = ToWorld(segment.CenterLine[^1]);
-        var length = start.DistanceTo(end);
-        var transform = PrimitiveFactory.OrientedBoxTransform(start, end, 0.0f);
-        roads.AddChild(PrimitiveFactory.Box(
-            segment.Id,
-            new Vector3((float)segment.WidthMeters, 0.12f, length),
-            transform,
-            _asphalt));
-
         var direction = (segment.CenterLine[^1] - segment.CenterLine[0]).Normalized();
         var left = direction.PerpendicularLeft();
         var roadEdge = segment.WidthMeters * 0.5;
@@ -108,6 +98,14 @@ public sealed class RoadSceneBuilder
         var trimmedStart = segment.CenterLine[0] + (direction * startTrim);
         var trimmedEnd = segment.CenterLine[^1] - (direction * endTrim);
         var trimmedLength = Vector2D.Distance(trimmedStart, trimmedEnd);
+        var roadStart = ToWorld(trimmedStart);
+        var roadEnd = ToWorld(trimmedEnd);
+        roads.AddChild(PrimitiveFactory.Box(
+            segment.Id,
+            new Vector3((float)segment.WidthMeters, 0.12f, (float)trimmedLength),
+            PrimitiveFactory.OrientedBoxTransform(roadStart, roadEnd, 0.0f),
+            _asphalt));
+
         var markingStartTrim = GetLongitudinalMarkingTrim(
             network,
             segment,
@@ -246,6 +244,14 @@ public sealed class RoadSceneBuilder
             .Select(lane => network.GetSegment(lane.SegmentId).WidthMeters)
             .DefaultIfEmpty(7.2)
             .Max();
+
+        if (intersection.Kind == IntersectionKind.Corner)
+        {
+            AddCornerRoadSurface(network, intersection, roads);
+            AddIntersectionSidewalks(network, intersection, sidewalks, widestRoad);
+            return;
+        }
+
         var size = (float)(widestRoad + 0.08);
         roads.AddChild(PrimitiveFactory.Box(
             $"intersection:{intersection.NodeId}",
@@ -253,10 +259,47 @@ public sealed class RoadSceneBuilder
             new Transform3D(Basis.Identity, ToWorld(intersection.Position)),
             _asphalt));
 
-        if (intersection.Kind is IntersectionKind.Corner or IntersectionKind.ThreeWay or IntersectionKind.FourWay)
+        if (intersection.Kind is IntersectionKind.ThreeWay or IntersectionKind.FourWay)
         {
             AddIntersectionSidewalks(network, intersection, sidewalks, widestRoad);
         }
+    }
+
+    private void AddCornerRoadSurface(
+        RoadNetwork network,
+        Intersection intersection,
+        Node3D roads)
+    {
+        var node = network.GetNode(intersection.NodeId);
+        var segments = node.ConnectedSegmentIds
+            .Select(network.GetSegment)
+            .OrderBy(segment => segment.Id, StringComparer.Ordinal)
+            .ToArray();
+        if (segments.Length != 2)
+        {
+            return;
+        }
+
+        var cutoutHalfWidth = GetIntersectionCutoutHalfWidth(network, node);
+        var centerPath = CreateCornerCurve(
+            intersection.Position,
+            GetOutwardDirection(network, node, segments[0]),
+            GetOutwardDirection(network, node, segments[1]),
+            cutoutHalfWidth);
+        var firstEdge = CreateOffsetPolyline(
+            centerPath,
+            segments[0].WidthMeters * -0.5,
+            segments[1].WidthMeters * -0.5);
+        var secondEdge = CreateOffsetPolyline(
+            centerPath,
+            segments[0].WidthMeters * 0.5,
+            segments[1].WidthMeters * 0.5);
+        roads.AddChild(PrimitiveFactory.Ribbon(
+            $"intersection-corner:{intersection.NodeId}",
+            firstEdge.Select(ToWorld).ToArray(),
+            secondEdge.Select(ToWorld).ToArray(),
+            0.065f,
+            _asphalt));
     }
 
     private void AddIntersectionSidewalks(
@@ -273,6 +316,12 @@ public sealed class RoadSceneBuilder
             .DefaultIfEmpty(2.4)
             .Max();
         var cutoutHalfWidth = GetIntersectionCutoutHalfWidth(network, node);
+
+        if (node.Kind == IntersectionKind.Corner)
+        {
+            AddCornerSidewalks(network, sidewalks, intersection, node, cutoutHalfWidth);
+            return;
+        }
 
         foreach (var xSign in new[] { -1, 1 })
         {
@@ -324,6 +373,63 @@ public sealed class RoadSceneBuilder
             cutoutHalfWidth);
     }
 
+    private void AddCornerSidewalks(
+        RoadNetwork network,
+        Node3D sidewalks,
+        Intersection intersection,
+        RoadNode node,
+        double cutoutHalfWidth)
+    {
+        var segments = node.ConnectedSegmentIds
+            .Select(network.GetSegment)
+            .OrderBy(segment => segment.Id, StringComparer.Ordinal)
+            .ToArray();
+        if (segments.Length != 2)
+        {
+            return;
+        }
+
+        var firstDirection = GetOutwardDirection(network, node, segments[0]);
+        var secondDirection = GetOutwardDirection(network, node, segments[1]);
+        var centerPath = CreateCornerCurve(
+            intersection.Position,
+            firstDirection,
+            secondDirection,
+            cutoutHalfWidth);
+
+        foreach (var side in new[] { -1.0, 1.0 })
+        {
+            var curbPath = CreateOffsetPolyline(
+                centerPath,
+                side * ((segments[0].WidthMeters * 0.5) + 0.12),
+                side * ((segments[1].WidthMeters * 0.5) + 0.12));
+            var sidewalkInnerPath = CreateOffsetPolyline(
+                centerPath,
+                side * ((segments[0].WidthMeters * 0.5) + 0.22),
+                side * ((segments[1].WidthMeters * 0.5) + 0.22));
+            var sidewalkOuterPath = CreateOffsetPolyline(
+                centerPath,
+                side * ((segments[0].WidthMeters * 0.5) + segments[0].SidewalkWidthMeters + 0.22),
+                side * ((segments[1].WidthMeters * 0.5) + segments[1].SidewalkWidthMeters + 0.22));
+
+            sidewalks.AddChild(PrimitiveFactory.Ribbon(
+                $"sidewalk-corner-curve:{intersection.NodeId}:{side}",
+                sidewalkInnerPath.Select(ToWorld).ToArray(),
+                sidewalkOuterPath.Select(ToWorld).ToArray(),
+                0.18f,
+                _sidewalk));
+
+            for (var index = 0; index + 1 < centerPath.Count; index++)
+            {
+                AddCurbRun(
+                    sidewalks,
+                    $"curb-corner-curve:{intersection.NodeId}:{side}:{index}",
+                    curbPath[index],
+                    curbPath[index + 1]);
+            }
+        }
+    }
+
     private void AddConnectedCorner(
         Node3D sidewalks,
         Intersection intersection,
@@ -371,11 +477,19 @@ public sealed class RoadSceneBuilder
         var verticalCurbEndpoint = intersection.Position + new Vector2D(
             xSign * ((verticalSegment.WidthMeters * 0.5) + 0.12),
             ySign * cutoutHalfWidth);
+        var horizontalCurbCorner = intersection.Position + new Vector2D(
+            xSign * ((verticalSegment.WidthMeters * 0.5) + 0.12),
+            ySign * ((horizontalSegment.WidthMeters * 0.5) + 0.12));
         AddCurbRun(
             sidewalks,
-            $"curb-corner:{intersection.NodeId}:{xSign}:{ySign}",
+            $"curb-corner-x:{intersection.NodeId}:{xSign}:{ySign}",
             horizontalCurbEndpoint,
-            verticalCurbEndpoint);
+            horizontalCurbCorner);
+        AddCurbRun(
+            sidewalks,
+            $"curb-corner-z:{intersection.NodeId}:{xSign}:{ySign}",
+            verticalCurbEndpoint,
+            horizontalCurbCorner);
     }
 
     private void AddSidewalkRun(
@@ -589,6 +703,12 @@ public sealed class RoadSceneBuilder
         Intersection intersection,
         Node3D markings)
     {
+        if (intersection.Kind == IntersectionKind.Corner)
+        {
+            AddCornerMarkings(network, intersection, markings);
+            return;
+        }
+
         if (intersection.TrafficControlIds.Count == 0)
         {
             return;
@@ -613,6 +733,198 @@ public sealed class RoadSceneBuilder
             AddCrosswalk(markings, intersection, segment, lanes[0].Direction, cutoutHalfWidth);
             AddDirectionalLaneArrows(markings, intersection, lanes, cutoutHalfWidth);
         }
+    }
+
+    private void AddCornerMarkings(
+        RoadNetwork network,
+        Intersection intersection,
+        Node3D markings)
+    {
+        var node = network.GetNode(intersection.NodeId);
+        var segments = node.ConnectedSegmentIds
+            .Select(network.GetSegment)
+            .OrderBy(segment => segment.Id, StringComparer.Ordinal)
+            .ToArray();
+        if (segments.Length != 2)
+        {
+            return;
+        }
+
+        var cutoutHalfWidth = GetIntersectionCutoutHalfWidth(network, node);
+        var directions = segments
+            .Select(segment => GetOutwardDirection(network, node, segment))
+            .ToArray();
+        var centerPath = CreateCornerCurve(
+            node.Position,
+            directions[0],
+            directions[1],
+            cutoutHalfWidth);
+        var arterialTreatment = segments.Any(segment => segment.Classification == RoadClassification.Arterial);
+        if (!arterialTreatment)
+        {
+            AddDashedPolylineLine(
+                markings,
+                $"corner-centre:{intersection.NodeId}",
+                centerPath,
+                0.13f,
+                _yellow);
+        }
+        else
+        {
+            AddOffsetPolylineLine(
+                markings,
+                $"corner-centre-left:{intersection.NodeId}",
+                centerPath,
+                0.15,
+                0.15,
+                0.11f,
+                _yellow);
+            AddOffsetPolylineLine(
+                markings,
+                $"corner-centre-right:{intersection.NodeId}",
+                centerPath,
+                -0.15,
+                -0.15,
+                0.11f,
+                _yellow);
+        }
+
+        AddOffsetPolylineLine(
+            markings,
+            $"corner-edge-left:{intersection.NodeId}",
+            centerPath,
+            segments[0].WidthMeters * 0.5,
+            segments[1].WidthMeters * 0.5,
+            0.12f,
+            _white);
+        AddOffsetPolylineLine(
+            markings,
+            $"corner-edge-right:{intersection.NodeId}",
+            centerPath,
+            segments[0].WidthMeters * -0.5,
+            segments[1].WidthMeters * -0.5,
+            0.12f,
+            _white);
+
+        var sameLaneTreatment = segments[0].LanesPerDirection == segments[1].LanesPerDirection &&
+            Math.Abs(segments[0].WidthMeters - segments[1].WidthMeters) < 0.001;
+        if (!sameLaneTreatment || segments[0].LanesPerDirection < 2)
+        {
+            return;
+        }
+
+        var laneWidth = segments[0].WidthMeters / (segments[0].LanesPerDirection * 2.0);
+        for (var divider = 1; divider < segments[0].LanesPerDirection; divider++)
+        {
+            var offset = laneWidth * divider;
+            AddOffsetPolylineLine(
+                markings,
+                $"corner-lane-divider-left:{intersection.NodeId}:{divider}",
+                centerPath,
+                offset,
+                offset,
+                0.11f,
+                _white,
+                dashed: true);
+            AddOffsetPolylineLine(
+                markings,
+                $"corner-lane-divider-right:{intersection.NodeId}:{divider}",
+                centerPath,
+                -offset,
+                -offset,
+                0.11f,
+                _white,
+                dashed: true);
+        }
+    }
+
+    private static Vector2D GetOutwardDirection(
+        RoadNetwork network,
+        RoadNode node,
+        RoadSegment segment)
+    {
+        var otherNodeId = segment.StartNodeId == node.Id ? segment.EndNodeId : segment.StartNodeId;
+        return (network.GetNode(otherNodeId).Position - node.Position).Normalized();
+    }
+
+    private static IReadOnlyList<Vector2D> CreateCornerCurve(
+        Vector2D corner,
+        Vector2D firstDirection,
+        Vector2D secondDirection,
+        double cutoutHalfWidth)
+    {
+        const int samples = 24;
+        var arcCenter = corner + ((firstDirection + secondDirection) * cutoutHalfWidth);
+        var points = new Vector2D[samples + 1];
+        for (var index = 0; index <= samples; index++)
+        {
+            var amount = index / (double)samples;
+            var angle = amount * Math.PI * 0.5;
+            points[index] = arcCenter -
+                (secondDirection * (Math.Cos(angle) * cutoutHalfWidth)) -
+                (firstDirection * (Math.Sin(angle) * cutoutHalfWidth));
+        }
+
+        return points;
+    }
+
+    private void AddOffsetPolylineLine(
+        Node3D markings,
+        string name,
+        IReadOnlyList<Vector2D> centerPath,
+        double startOffset,
+        double endOffset,
+        float width,
+        Material material,
+        bool dashed = false)
+    {
+        var points = CreateOffsetPolyline(centerPath, startOffset, endOffset);
+
+        if (dashed)
+        {
+            AddDashedPolylineLine(markings, name, points, width, material);
+        }
+        else
+        {
+            AddPolylineLine(markings, name, points, width, material);
+        }
+    }
+
+    private static IReadOnlyList<Vector2D> CreateOffsetPolyline(
+        IReadOnlyList<Vector2D> centerPath,
+        double startOffset,
+        double endOffset)
+    {
+        var points = new Vector2D[centerPath.Count];
+        for (var index = 0; index < centerPath.Count; index++)
+        {
+            Vector2D tangent;
+            if (index == 0)
+            {
+                tangent =
+                    (centerPath[1] * 4.0) -
+                    (centerPath[0] * 3.0) -
+                    centerPath[2];
+            }
+            else if (index == centerPath.Count - 1)
+            {
+                tangent =
+                    (centerPath[index] * 3.0) -
+                    (centerPath[index - 1] * 4.0) +
+                    centerPath[index - 2];
+            }
+            else
+            {
+                tangent = centerPath[index + 1] - centerPath[index - 1];
+            }
+
+            var left = tangent.Normalized().PerpendicularLeft();
+            var amount = index / (double)(centerPath.Count - 1);
+            var offset = startOffset + ((endOffset - startOffset) * amount);
+            points[index] = centerPath[index] + (left * offset);
+        }
+
+        return points;
     }
 
     private void AddCrosswalk(
@@ -768,6 +1080,20 @@ public sealed class RoadSceneBuilder
             return 0.0;
         }
 
+        if (node.Kind == IntersectionKind.Corner)
+        {
+            const double innerVergeRadius = 1.0;
+            return node.ConnectedSegmentIds
+                .Select(network.GetSegment)
+                .Select(segment =>
+                    (segment.WidthMeters * 0.5) +
+                    segment.SidewalkWidthMeters +
+                    0.22 +
+                    innerVergeRadius)
+                .DefaultIfEmpty(0.0)
+                .Max();
+        }
+
         return node.ConnectedSegmentIds
             .Select(network.GetSegment)
             .Select(segment => segment.WidthMeters * 0.5)
@@ -799,6 +1125,98 @@ public sealed class RoadSceneBuilder
         public bool East { get; set; }
 
         public bool West { get; set; }
+    }
+
+    private static void AddPolylineLine(
+        Node3D parent,
+        string name,
+        IReadOnlyList<Vector2D> points,
+        float width,
+        Material material)
+    {
+        for (var index = 0; index + 1 < points.Count; index++)
+        {
+            AddLine(
+                parent,
+                $"{name}:{index}",
+                points[index],
+                points[index + 1],
+                width,
+                MarkingElevation,
+                material);
+        }
+    }
+
+    private static void AddDashedPolylineLine(
+        Node3D parent,
+        string name,
+        IReadOnlyList<Vector2D> points,
+        float width,
+        Material material)
+    {
+        var totalLength = 0.0;
+        for (var index = 0; index + 1 < points.Count; index++)
+        {
+            totalLength += Vector2D.Distance(points[index], points[index + 1]);
+        }
+
+        if (totalLength < 1.5)
+        {
+            return;
+        }
+
+        const double dash = 3.2;
+        const double gap = 4.2;
+        const double endMargin = 0.6;
+        var dashIndex = 0;
+        for (var offset = endMargin; offset < totalLength - endMargin; offset += dash + gap)
+        {
+            var dashEnd = Math.Min(offset + dash, totalLength - endMargin);
+            if (dashEnd - offset < 0.8)
+            {
+                break;
+            }
+
+            AddPolylineSubLine(parent, $"{name}:{dashIndex++}", points, offset, dashEnd, width, material);
+        }
+    }
+
+    private static void AddPolylineSubLine(
+        Node3D parent,
+        string name,
+        IReadOnlyList<Vector2D> points,
+        double fromDistance,
+        double toDistance,
+        float width,
+        Material material)
+    {
+        var traversed = 0.0;
+        var segmentIndex = 0;
+        for (var index = 0; index + 1 < points.Count; index++)
+        {
+            var segmentLength = Vector2D.Distance(points[index], points[index + 1]);
+            var segmentStart = Math.Max(fromDistance, traversed);
+            var segmentEnd = Math.Min(toDistance, traversed + segmentLength);
+            if (segmentEnd - segmentStart >= 0.02)
+            {
+                var localStart = (segmentStart - traversed) / segmentLength;
+                var localEnd = (segmentEnd - traversed) / segmentLength;
+                AddLine(
+                    parent,
+                    $"{name}:{segmentIndex++}",
+                    Vector2D.Lerp(points[index], points[index + 1], localStart),
+                    Vector2D.Lerp(points[index], points[index + 1], localEnd),
+                    width,
+                    MarkingElevation,
+                    material);
+            }
+
+            traversed += segmentLength;
+            if (traversed >= toDistance)
+            {
+                break;
+            }
+        }
     }
 
     private void AddDashedLine(
@@ -855,7 +1273,8 @@ public sealed class RoadSceneBuilder
             name,
             new Vector3(width, 0.025f, start.DistanceTo(end)),
             PrimitiveFactory.OrientedBoxTransform(start, end, elevation),
-            material));
+            material,
+            castShadow: false));
     }
 
     private TrafficSignalHead? AddTrafficControl(

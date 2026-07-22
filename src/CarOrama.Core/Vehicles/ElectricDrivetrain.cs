@@ -13,6 +13,8 @@ public readonly record struct DrivetrainOutput(
 
 public sealed class ElectricDrivetrain
 {
+    private const double DirectionChangeSpeedThresholdMetersPerSecond = 0.5;
+
     private readonly ElectricMotorModel _motor;
     private readonly MechanicalBrakeModel _mechanicalBrake;
 
@@ -36,9 +38,27 @@ public sealed class ElectricDrivetrain
             return default;
         }
 
+        var wheelLinearSpeed = wheelAngularSpeedRadiansPerSecond * Specification.WheelRadiusMeters;
         var motorSpeed = Math.Abs(wheelAngularSpeedRadiansPerSecond) * Specification.Motor.ReductionRatio;
-        var brakingRequested = command.RegenerativeBrake > 0.0 || command.FrictionBrake > 0.0;
-        var driveTorque = _motor.GetDriveTorqueNewtonMeters(motorSpeed, brakingRequested ? 0.0 : command.Throttle);
+        var requestedDirection = Math.Sign(command.Throttle);
+        var directionChangeRequested = requestedDirection != 0 &&
+            Math.Abs(wheelLinearSpeed) > DirectionChangeSpeedThresholdMetersPerSecond &&
+            requestedDirection != Math.Sign(wheelLinearSpeed);
+        var reverseSpeedLimited = requestedDirection < 0 &&
+            wheelLinearSpeed <= -Specification.MaximumReverseSpeedMetersPerSecond;
+        var brakingRequested = command.RegenerativeBrake > 0.0 ||
+            command.FrictionBrake > 0.0 ||
+            directionChangeRequested;
+        var acceleratorDemand = brakingRequested || reverseSpeedLimited ? 0.0 : Math.Abs(command.Throttle);
+        var driveTorque = _motor.GetDriveTorqueNewtonMeters(motorSpeed, acceleratorDemand);
+        var accelerationLimit = requestedDirection < 0
+            ? Specification.MaximumReverseAccelerationMetersPerSecondSquared
+            : Specification.MaximumDriveAccelerationMetersPerSecondSquared;
+        var maximumLaunchTorque = accelerationLimit
+            * Specification.MassKilograms
+            * Specification.WheelRadiusMeters
+            / (Specification.Motor.ReductionRatio * Specification.Motor.DriveEfficiency);
+        driveTorque = Math.Min(driveTorque, maximumLaunchTorque);
         var motorMechanicalPower = driveTorque * motorSpeed;
         var requestedDriveBatteryPower = motorMechanicalPower / Specification.Motor.DriveEfficiency;
         var acceptedDrivePower = Battery.ApplyPower(requestedDriveBatteryPower, deltaSeconds);
@@ -47,7 +67,10 @@ public sealed class ElectricDrivetrain
             driveTorque *= acceptedDrivePower / requestedDriveBatteryPower;
         }
 
-        var regenerativeTorque = _motor.GetRegenerativeTorqueNewtonMeters(motorSpeed, command.RegenerativeBrake);
+        var regenerativeDemand = Math.Max(
+            command.RegenerativeBrake,
+            directionChangeRequested ? Math.Abs(command.Throttle) : 0.0);
+        var regenerativeTorque = _motor.GetRegenerativeTorqueNewtonMeters(motorSpeed, regenerativeDemand);
         var requestedRegenerativePower = -(regenerativeTorque * motorSpeed * Specification.Motor.RegenerativeEfficiency);
         var acceptedRegenerativePower = Battery.ApplyPower(requestedRegenerativePower, deltaSeconds);
         if (requestedRegenerativePower < -1e-6)
@@ -56,7 +79,8 @@ public sealed class ElectricDrivetrain
         }
 
         var auxiliaryPower = Battery.ApplyPower(Specification.Battery.AuxiliaryPowerWatts, deltaSeconds);
-        var driveForce = (driveTorque * Specification.Motor.ReductionRatio * Specification.Motor.DriveEfficiency)
+        var driveForce = requestedDirection *
+            (driveTorque * Specification.Motor.ReductionRatio * Specification.Motor.DriveEfficiency)
             / Specification.WheelRadiusMeters;
         var regenerativeForce = (regenerativeTorque * Specification.Motor.ReductionRatio)
             / Specification.WheelRadiusMeters;

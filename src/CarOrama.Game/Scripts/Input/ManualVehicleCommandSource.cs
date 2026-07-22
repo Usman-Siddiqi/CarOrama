@@ -5,18 +5,41 @@ namespace CarOrama.Game.Input;
 
 public sealed class ManualVehicleCommandSource : IVehicleCommandSource, IVehicleLightingCommandSource
 {
+    private const double ThrottleApplicationRatePerSecond = 7.5;
+    private const double BrakeReverseApplicationRatePerSecond = 4.0;
+    private const double FrictionBrakeApplicationRatePerSecond = 2.5;
+    private const double PedalReleaseRatePerSecond = 10.0;
+
     private bool _headlightsEnabled;
     private bool _hazardLightsEnabled;
     private TurnSignalState _turnSignal;
+    private double _forwardThrottle;
+    private double _brakeReverseThrottle;
+    private double _frictionBrake;
 
     public VehicleCommand ReadCommand(double deltaSeconds)
     {
-        _ = deltaSeconds;
         var steering = Godot.Input.GetAxis(InputBindings.SteerLeft, InputBindings.SteerRight);
-        var throttle = Godot.Input.GetActionStrength(InputBindings.Throttle);
-        var regenerativeBrake = Godot.Input.GetActionStrength(InputBindings.RegenerativeBrake);
-        var frictionBrake = Godot.Input.GetActionStrength(InputBindings.FrictionBrake);
-        return VehicleCommand.Create(steering, throttle, regenerativeBrake, frictionBrake);
+        _forwardThrottle = MovePedal(
+            _forwardThrottle,
+            Godot.Input.GetActionStrength(InputBindings.Throttle),
+            ThrottleApplicationRatePerSecond,
+            deltaSeconds);
+        _brakeReverseThrottle = MovePedal(
+            _brakeReverseThrottle,
+            Godot.Input.GetActionStrength(InputBindings.BrakeReverse),
+            BrakeReverseApplicationRatePerSecond,
+            deltaSeconds);
+        _frictionBrake = MovePedal(
+            _frictionBrake,
+            Godot.Input.GetActionStrength(InputBindings.FrictionBrake),
+            FrictionBrakeApplicationRatePerSecond,
+            deltaSeconds);
+        return VehicleCommand.Create(
+            steering,
+            _forwardThrottle - _brakeReverseThrottle,
+            regenerativeBrake: 0.0,
+            _frictionBrake);
     }
 
     public VehicleLightingCommand ReadLightingCommand(double deltaSeconds)
@@ -46,5 +69,12 @@ public sealed class ManualVehicleCommandSource : IVehicleCommandSource, IVehicle
         }
 
         return VehicleLightingCommand.Create(_headlightsEnabled, _turnSignal, _hazardLightsEnabled);
+    }
+
+    private static double MovePedal(double current, double target, double applicationRate, double deltaSeconds)
+    {
+        var rate = target > current ? applicationRate : PedalReleaseRatePerSecond;
+        var maximumChange = Math.Max(0.0, deltaSeconds) * rate;
+        return Math.Clamp(target, current - maximumChange, current + maximumChange);
     }
 }

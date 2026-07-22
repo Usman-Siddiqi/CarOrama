@@ -15,7 +15,7 @@ public partial class ElectricVehicle : RigidBody3D
     private readonly IVehicleCommandSource _commandSource;
     private readonly IVehicleLightingCommandSource _lightingCommandSource;
     private readonly SuspensionSpecification _suspensionSpecification = new();
-    private readonly TireForceModel _tireModel = new(new TireSpecification());
+    private readonly TireForceModel _tireModel;
     private readonly List<WheelContact> _wheels = [];
     private VehicleExteriorLighting? _exteriorLighting;
     private float _steeringInput;
@@ -33,8 +33,16 @@ public partial class ElectricVehicle : RigidBody3D
             commandSource as IVehicleLightingCommandSource ??
             DisabledVehicleLightingCommandSource.Instance;
         _drivetrain = new ElectricDrivetrain(specification);
+        _tireModel = new TireForceModel(new TireSpecification
+        {
+            FrictionCoefficient = specification.TireFrictionCoefficient,
+        });
         Name = "ElectricVehicle";
         Mass = (float)specification.MassKilograms;
+        LinearDampMode = RigidBody3D.DampMode.Replace;
+        LinearDamp = 0.0f;
+        AngularDampMode = RigidBody3D.DampMode.Replace;
+        AngularDamp = 0.0f;
         ContinuousCd = true;
         CanSleep = false;
         ContactMonitor = true;
@@ -115,7 +123,14 @@ public partial class ElectricVehicle : RigidBody3D
 
         ApplyBodyResistance(bodyForward, signedForwardSpeed);
         UpdateWheelVisuals((float)delta, signedForwardSpeed);
-        _exteriorLighting?.ApplyLampState(LastLightingCommand, LastCommand, delta);
+        var drivetrainBraking = drivetrain.RegenerativeBrakeForceNewtons > 100.0;
+        var reverseSelected = LastCommand.Throttle < -0.02 && signedForwardSpeed <= 0.5f;
+        _exteriorLighting?.ApplyLampState(
+            LastLightingCommand,
+            LastCommand,
+            drivetrainBraking,
+            reverseSelected,
+            delta);
     }
 
     private void ApplyWheelForces(

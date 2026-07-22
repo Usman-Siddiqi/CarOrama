@@ -52,7 +52,7 @@ public partial class TelemetryHud : CanvasLayer
             $"Motor {Vehicle.MotorSpeedRpm,7:F0} rpm    Pack {Vehicle.BatteryPowerKilowatts,6:F1} kW\n" +
             $"Contact {Vehicle.GroundedWheelCount}/4    Collisions {Vehicle.CollisionCount}\n" +
             $"Headlights {(lighting.HeadlightsEnabled ? "ON" : "OFF"),-3}    Signal {signal}\n\n" +
-            "WASD/Arrows drive  |  Space friction brake\n" +
+            "W/S drive, brake & reverse  |  Space emergency brake\n" +
             "Q/E indicators  |  X hazards  |  H headlights\n" +
             "C camera  |  R reset  |  N new seeded world";
     }

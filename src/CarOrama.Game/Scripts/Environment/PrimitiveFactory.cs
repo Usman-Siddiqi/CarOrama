@@ -21,7 +21,8 @@ internal static class PrimitiveFactory
         Vector3 size,
         Transform3D transform,
         Material material,
-        bool collision = false)
+        bool collision = false,
+        bool castShadow = true)
     {
         Node3D root;
         if (collision)
@@ -45,7 +46,9 @@ internal static class PrimitiveFactory
             Name = "Mesh",
             Mesh = new BoxMesh { Size = size },
             MaterialOverride = material,
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.On,
+            CastShadow = castShadow
+                ? GeometryInstance3D.ShadowCastingSetting.On
+                : GeometryInstance3D.ShadowCastingSetting.Off,
         });
         return root;
     }
@@ -71,6 +74,51 @@ internal static class PrimitiveFactory
         };
     }
 
+    public static MeshInstance3D Ribbon(
+        string name,
+        IReadOnlyList<Vector3> firstEdge,
+        IReadOnlyList<Vector3> secondEdge,
+        float elevation,
+        Material material)
+    {
+        if (firstEdge.Count != secondEdge.Count || firstEdge.Count < 2)
+        {
+            throw new ArgumentException("Ribbon edges must contain the same number of usable points.");
+        }
+
+        var surface = new SurfaceTool();
+        surface.Begin(Mesh.PrimitiveType.Triangles);
+        for (var index = 0; index + 1 < firstEdge.Count; index++)
+        {
+            var first = firstEdge[index] + (Vector3.Up * elevation);
+            var second = secondEdge[index] + (Vector3.Up * elevation);
+            var nextFirst = firstEdge[index + 1] + (Vector3.Up * elevation);
+            var nextSecond = secondEdge[index + 1] + (Vector3.Up * elevation);
+
+            surface.SetNormal(Vector3.Up);
+            surface.AddVertex(first);
+            surface.AddVertex(second);
+            surface.AddVertex(nextFirst);
+            surface.AddVertex(second);
+            surface.AddVertex(nextSecond);
+            surface.AddVertex(nextFirst);
+        }
+
+        var ribbonMaterial = (Material)material.Duplicate();
+        if (ribbonMaterial is BaseMaterial3D baseMaterial)
+        {
+            baseMaterial.CullMode = BaseMaterial3D.CullModeEnum.Disabled;
+        }
+
+        return new MeshInstance3D
+        {
+            Name = name,
+            Mesh = surface.Commit(),
+            MaterialOverride = ribbonMaterial,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.On,
+        };
+    }
+
     public static Transform3D OrientedBoxTransform(Vector3 start, Vector3 end, float elevation)
     {
         var direction = (end - start).Normalized();
@@ -80,4 +128,3 @@ internal static class PrimitiveFactory
         return new Transform3D(basis, position);
     }
 }
-

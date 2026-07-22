@@ -18,12 +18,15 @@ internal sealed partial class VehicleExteriorLighting : Node3D
     private static readonly Color HeadlightOffColor = new("aeb7b8");
     private static readonly Color TailLightColor = new("e00000");
     private static readonly Color TailLightOffColor = new("4e0b12");
+    private static readonly Color ReverseLightColor = new("fffdf0");
+    private static readonly Color ReverseLightOffColor = new("6f7474");
     private static readonly Color IndicatorColor = new("f07800");
     private static readonly Color IndicatorOffColor = new("5b3108");
 
     private readonly StandardMaterial3D _headlightMaterial = CreateLampMaterial(HeadlightOffColor);
     private readonly StandardMaterial3D _tailLightMaterial = CreateLampMaterial(TailLightOffColor);
     private readonly StandardMaterial3D _centerBrakeLightMaterial = CreateLampMaterial(TailLightOffColor);
+    private readonly StandardMaterial3D _reverseLightMaterial = CreateLampMaterial(ReverseLightOffColor);
     private readonly StandardMaterial3D _leftIndicatorMaterial = CreateLampMaterial(IndicatorOffColor);
     private readonly StandardMaterial3D _rightIndicatorMaterial = CreateLampMaterial(IndicatorOffColor);
     private readonly List<SpotLight3D> _headlightBeams = [];
@@ -34,10 +37,12 @@ internal sealed partial class VehicleExteriorLighting : Node3D
     {
         Name = "ExteriorLighting";
         BuildLampGeometry();
-        ApplyLampState(VehicleLightingCommand.Off, VehicleCommand.Neutral, 0.0);
+        ApplyLampState(VehicleLightingCommand.Off, VehicleCommand.Neutral, false, false, 0.0);
     }
 
     public bool BrakeLightsActive { get; private set; }
+
+    public bool ReverseLightsActive { get; private set; }
 
     public bool LeftIndicatorLit { get; private set; }
 
@@ -46,6 +51,8 @@ internal sealed partial class VehicleExteriorLighting : Node3D
     public void ApplyLampState(
         VehicleLightingCommand lightingCommand,
         VehicleCommand motionCommand,
+        bool drivetrainBraking,
+        bool reverseSelected,
         double deltaSeconds)
     {
         var indicatorSelectionChanged =
@@ -71,7 +78,9 @@ internal sealed partial class VehicleExteriorLighting : Node3D
         RightIndicatorLit = lightingCommand.RightIndicatorEnabled && blinkOn;
         BrakeLightsActive =
             motionCommand.RegenerativeBrake > BrakeActivationThreshold ||
-            motionCommand.FrictionBrake > BrakeActivationThreshold;
+            motionCommand.FrictionBrake > BrakeActivationThreshold ||
+            drivetrainBraking;
+        ReverseLightsActive = reverseSelected;
 
         SetLampMaterial(
             _headlightMaterial,
@@ -94,6 +103,12 @@ internal sealed partial class VehicleExteriorLighting : Node3D
             TailLightColor,
             TailLightOffColor,
             1.65f);
+        SetLampMaterial(
+            _reverseLightMaterial,
+            ReverseLightsActive,
+            ReverseLightColor,
+            ReverseLightOffColor,
+            1.4f);
         SetLampMaterial(
             _leftIndicatorMaterial,
             LeftIndicatorLit,
@@ -143,6 +158,16 @@ internal sealed partial class VehicleExteriorLighting : Node3D
             new Vector3(0.0f, 0.96f, 1.315f),
             new Vector3(0.7f, 0.075f, 0.045f),
             _centerBrakeLightMaterial);
+        AddLamp(
+            "LeftReverseLight",
+            new Vector3(-0.31f, 0.25f, 2.31f),
+            new Vector3(0.18f, 0.12f, 0.075f),
+            _reverseLightMaterial);
+        AddLamp(
+            "RightReverseLight",
+            new Vector3(0.31f, 0.25f, 2.31f),
+            new Vector3(0.18f, 0.12f, 0.075f),
+            _reverseLightMaterial);
 
         AddIndicatorSet("Left", -0.875f, _leftIndicatorMaterial);
         AddIndicatorSet("Right", 0.875f, _rightIndicatorMaterial);

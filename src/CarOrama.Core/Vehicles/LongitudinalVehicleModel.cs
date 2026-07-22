@@ -44,8 +44,12 @@ public sealed class LongitudinalVehicleModel
         var rolling = State.SpeedMetersPerSecond > 0.05
             ? Specification.RollingResistanceCoefficient * Specification.MassKilograms * GravityMetersPerSecondSquared
             : 0.0;
+        var requestedBraking = output.RegenerativeBrakeForceNewtons + output.FrictionBrakeForceNewtons;
+        var tireLimitedBraking = Math.Min(
+            requestedBraking,
+            Specification.TireFrictionCoefficient * Specification.MassKilograms * GravityMetersPerSecondSquared);
         var braking = Math.Min(
-            output.RegenerativeBrakeForceNewtons + output.FrictionBrakeForceNewtons,
+            tireLimitedBraking,
             State.SpeedMetersPerSecond * Specification.MassKilograms / deltaSeconds);
         var netForce = output.DriveForceNewtons - drag - rolling - braking;
         var acceleration = netForce / Specification.MassKilograms;
@@ -61,4 +65,3 @@ public sealed class LongitudinalVehicleModel
         return State;
     }
 }
-
