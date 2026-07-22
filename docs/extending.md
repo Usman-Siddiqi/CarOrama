@@ -51,6 +51,30 @@ Do not add Python dependencies to either existing project. Introduce a versioned
 
 The initial in-process boundary is `ISimulationEnvironment`. `SimulationScenario` fixes an integer physics/control cadence, `EpisodeResetRequest` binds the seed/route/spawn, and each tick-addressed `DrivingAction` requests steering plus longitudinal acceleration. The environment returns `PrivilegedObservation` and `EpisodeStepResult` values without exposing Godot nodes. A future transport should map these semantics to explicit wire DTOs or codecs, preserve validation at the domain boundary, and prove round-trip compatibility in tests instead of exposing a second behavioral API.
 
+`DeterministicDrivingEnvironment` is the fast reference implementation. Construct a validated `DrivingRoute` from `RoutePlanner` lane IDs, reset with the matching road seed and spawn, then pass each observation to a controller:
+
+```csharp
+var laneIds = RoutePlanner.FindLaneRoute(network, spawn.LaneId, destinationLaneId);
+var route = DrivingRoute.Create("evaluation-route", network, laneIds);
+var scenario = SimulationScenario.Create("evaluation", 120, 20, 2_400);
+var environment = new DeterministicDrivingEnvironment(network, route);
+var controller = new PrivilegedRouteFollower();
+var observation = environment.Reset(
+    EpisodeResetRequest.Create(scenario, network.Seed, route.Id, spawn.Id));
+
+while (true)
+{
+    var result = environment.Step(controller.GetAction(observation));
+    observation = result.Observation;
+    if (result.IsTerminal)
+    {
+        break;
+    }
+}
+```
+
+This reference loop intentionally uses deterministic planar motion. A Godot environment adapter must advance the Jolt rigid body asynchronously over the same configured tick schedule and populate collision/contact metrics without changing these controller-facing semantics.
+
 The protocol should support:
 
 - seed and scenario manifests;

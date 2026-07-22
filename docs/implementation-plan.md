@@ -33,11 +33,17 @@ Exit condition: one vehicle can be driven through the generated network without 
 
 ## Milestone 3 — training readiness
 
+Current progress:
+
+- 3A: the eight-camera rig and high-level longitudinal brake allocator are implemented; synchronized sensor timestamps and recording remain.
+- 3B: the versioned contracts and synchronous deterministic reference runner are implemented and tested; the Godot rigid-body adapter and external transport remain.
+- 3C: route-relative ground truth and the privileged pure-pursuit/speed/stop baseline complete seeded straight and intersection-turn routes; live collision/violation metrics, episode recording, and fixed seed splits remain.
+
 ### 3A — vehicle sensing and control semantics
 
 - Add a configurable eight-camera exterior rig based on the documented 2024+ Model 3 locations: two windshield, two door-pillar, two front-fender, rear, and optional front-bumper positions.
 - Keep camera intrinsics, extrinsics, resolution, frequency, and activation independent of the on-screen monitor.
-- Replace direct driver control of regenerative and friction braking with a high-level deceleration request and a testable low-level brake allocator; retain actuator-level channels for diagnostics and plant integration.
+- Give autonomous controllers a high-level deceleration request and a testable low-level brake allocator; retain the actuator-level channels used by manual controls, diagnostics, and plant integration.
 - Timestamp sensor samples from simulation time rather than wall-clock time.
 
 Exit condition: all camera channels have unique calibrated mounts and can be selected or captured without changing the vehicle controller.

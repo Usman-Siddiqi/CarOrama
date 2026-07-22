@@ -1,6 +1,6 @@
 # CarOrama
 
-CarOrama is a long-term autonomous-driving simulation project. The current milestone provides two foundations: a deterministic, machine-readable road environment and one manually drivable electric vehicle. It intentionally stops before traffic, simulated perception, or driving agents.
+CarOrama is a long-term autonomous-driving simulation project. The current milestone provides a deterministic, machine-readable road environment, one manually drivable electric vehicle, and an engine-independent reference episode loop. It intentionally stops before learned policies, traffic participants, or simulated perception datasets.
 
 ## Current capabilities
 
@@ -9,7 +9,9 @@ CarOrama is a long-term autonomous-driving simulation project. The current miles
 - Vehicle-responsive traffic lights with lane-level approach detection, minimum/maximum green timing, passage-gap extension, yellow transition, and an all-red clearance interval.
 - A rigid-body electric vehicle with a single-speed motor model, configurable driven axles, regenerative and friction braking, ray-cast suspension, tire forces, collision handling, battery state of charge, exterior lighting, a follow camera, and an independently switchable eight-camera exterior rig with a live engineering monitor.
 - Separate motion and exterior-light command boundaries that keep keyboard/controller input replaceable by future driving controllers.
-- Engine-independent domain code and automated tests for the road graph and electric drivetrain.
+- A versioned reset/observe/step protocol with exact control/physics ticks, deterministic route ground truth, cumulative metrics, and terminal/truncation semantics.
+- A faster-than-real-time reference environment using the EV drivetrain, a bicycle motion model, regenerative/friction brake allocation, and a non-learning route-following baseline.
+- Engine-independent domain code and automated tests for the road graph, electric drivetrain, episode loop, and baseline controller.
 
 ## Technical stack
 
@@ -99,15 +101,15 @@ To run the complete sequence with one command, set `CARORAMA_GODOT` to the Godot
 
 ## Current scope and next extensions
 
-This milestone does **not** contain driving agents, neural networks, reinforcement or imitation learning, sensor recording or perception models, LiDAR/radar, traffic vehicles, pedestrians, or a traffic simulation.
+This milestone does **not** contain learned driving policies, neural networks, reinforcement or imitation learning, sensor recording or perception models, LiDAR/radar, traffic vehicles, pedestrians, or a traffic simulation. The included privileged-state controller is a deterministic reference baseline, not a learned policy.
 
 The next architectural increments should be:
 
-1. Implement a fixed-step scenario runner against the existing versioned reset/action/observation contracts.
-2. Add ground-truth sensor interfaces and synchronized capture before LiDAR, radar, GNSS, and IMU implementations.
-3. Add OpenDRIVE import/export and richer lane topology while keeping stable internal identifiers.
-4. Calibrate the vehicle model against published EV data and add repeatable skidpad, acceleration, braking, and energy tests.
-5. Add batched headless workers, dataset recording, evaluation metrics, and only then connect Python training code.
+1. Add a Godot rigid-body episode adapter that implements the same fixed-step semantics as the fast reference environment.
+2. Complete collision and traffic-law metrics, deterministic episode recording, and train/validation/held-out seed manifests.
+3. Add synchronized sensor capture and ground-truth labels before LiDAR, radar, GNSS, and IMU implementations.
+4. Add OpenDRIVE import/export and richer lane topology while keeping stable internal identifiers.
+5. Add batched headless workers and dataset infrastructure, and only then connect Python training code.
 
 ## License
 

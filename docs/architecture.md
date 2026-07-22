@@ -37,8 +37,8 @@ replay input ─┘
 
 RoadGenerator ─> RoadNetwork ─┬─> RoadSceneBuilder
                               ├─> routing / spawn queries
-                              ├─> future ground-truth sensors
-                              └─> future scenario and metrics services
+                              ├─> route-relative ground truth
+                              └─> episode runner / metrics
 ```
 
 `CarOrama.Core` contains immutable or narrowly mutable domain data, deterministic algorithms, validation, and testable drivetrain calculations. It cannot reference scene nodes, materials, input devices, or wall-clock time.
@@ -82,7 +82,11 @@ The tire model begins with clamped longitudinal and lateral force proportional t
 
 ## Future autonomous-driving boundary
 
-The simulation protocol has explicit `Reset(Scenario)`, `Observe()`, and `Step(Action)` boundaries; each step advances one configured control tick containing an integer number of fixed physics ticks. Learned and manual controllers should request steering and longitudinal acceleration/deceleration; a vehicle-level allocator converts deceleration into available regeneration and any required friction braking. The existing actuator-level `VehicleCommand` remains the plant boundary and diagnostic interface. Observations are timestamped bundles from sensor adapters plus route and optional privileged ground truth.
+The simulation protocol has explicit `Reset(Scenario)`, `Observe()`, and `Step(Action)` boundaries; each step advances one configured control tick containing an integer number of fixed physics ticks. Learned and manual controllers should request steering and longitudinal acceleration/deceleration; `LongitudinalCommandAllocator` converts deceleration into speed- and battery-dependent regeneration plus any required friction braking. The existing actuator-level `VehicleCommand` remains the plant boundary and diagnostic interface. Observations are timestamped bundles from sensor adapters plus route and optional privileged ground truth.
+
+`DeterministicDrivingEnvironment` is the first implementation of this protocol. It combines the production electric drivetrain with deterministic bicycle-model planar motion so protocol, reward, route-query, and controller tests can run synchronously and faster than real time without rendering. `DrivingRoute` adds explicit intersection connectors to the lane sequence, and `RoadGroundTruthQuery` supplies lane offset, heading error, route look-ahead, stop-line distance, traffic-control state, and safety flags directly from structured data. The Godot/Jolt rigid-body adapter remains a separate required implementation for suspension, tire-contact, and collision evaluation; the reference environment is not presented as a replacement for that physics.
+
+`PrivilegedRouteFollower` consumes only `PrivilegedObservation` and produces tick-addressed `DrivingAction` values. Its pure-pursuit steering, speed control, signal stopping, and stop-sign hold behavior provide a deterministic evaluation baseline and future demonstration source without coupling a controller to road or scene internals.
 
 The exterior camera layout follows the locations in the [2024+ Model 3 owner's manual](https://www.tesla.com/ownersmanual/model3/en_us/GUID-682FF4A7-D083-4C95-925A-5EE3752F4865.html) for a vehicle equipped with the optional front camera: front bumper, rear plate, two windshield, two door-pillar, and two front-fender channels. Camera count and approximate coverage follow the public layout, while intrinsics and extrinsics remain CarOrama-owned configuration because production calibration values are not public. Sensor viewports are independent of the dashboard monitor and may remain disabled in privileged/headless runs to avoid rendering cost.
 
@@ -90,7 +94,7 @@ Exterior lights use a separate `VehicleLightingCommand`. This allows a scenario 
 
 Python will remain a separate process. A versioned gRPC or shared-memory transport will allow local training, distributed workers, recorded replay, and independent simulator releases. No learning framework will be referenced from scene or physics assemblies.
 
-Planned metrics include collision impulse, lane departure duration, stop-line and signal violations, route progress/completion, jerk/lateral acceleration, intervention count, energy use, and wall-clock simulation throughput.
+The reference runner currently reports elapsed simulation time, distance, route completion, lane-departure count, mean absolute jerk, and net battery energy. The versioned metric contract also reserves collision and stop/signal violation counts. Collision impulse, speeding, violation detection against live Godot signals, lateral comfort, interventions, and wall-clock throughput remain required before training results are considered trustworthy.
 
 ## Performance strategy
 

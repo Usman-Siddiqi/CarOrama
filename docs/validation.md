@@ -28,6 +28,11 @@ The core suite checks:
 - the eight-camera exterior layout has unique identifiers, valid calibration ranges, mirrored side mounts, and deterministic configuration;
 - simulation scenarios enforce an integer fixed physics/control cadence;
 - versioned reset, action, privileged-observation, metric, and terminal contracts reject invalid or non-finite state.
+- driving routes reject disconnected lanes and expose continuous progress through intersection connectors;
+- ground-truth queries report signed lane offset, heading error, route look-ahead, stop-line distance, and control state;
+- longitudinal action allocation prioritizes available regeneration and blends friction braking at low speed, high state of charge, or strong deceleration;
+- identical resets and action sequences produce identical observations, rewards, metrics, and termination state;
+- the privileged baseline completes seeded straight and ninety-degree routes without lane departure and stops for signals/stop signs.
 
 The engine smoke test checks that a network is generated, scene geometry and a vehicle are instantiated, structured data validation passes, traffic-signal runtime states are available, all eight camera channels are registered without rendering in headless mode, exterior-light commands reach the vehicle, and a short fixed-step drivetrain scenario stays finite.
 
