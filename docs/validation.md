@@ -36,6 +36,12 @@ godot --path src/CarOrama.Game -- --intersection-preview
 
 This camera prioritizes the widest multi-lane junction and freezes the vehicle so road surfaces, sidewalk termination, curbs, markings, and traffic controls can be inspected without driving to the location.
 
+For a close inspection of stop-sign face, border, text, pole, orientation, and roadside placement, run:
+
+```powershell
+godot --path src/CarOrama.Game -- --traffic-control-preview
+```
+
 ## Manual checks
 
 For at least seeds `7`, `42`, and `2026`:

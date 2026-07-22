@@ -33,7 +33,11 @@ public partial class Main : Node3D
         _seed = ReadSeed();
         BuildWorld();
         AddLighting();
-        if (HasArgument("--intersection-preview"))
+        if (HasArgument("--traffic-control-preview"))
+        {
+            AddTrafficControlPreviewCamera();
+        }
+        else if (HasArgument("--intersection-preview"))
         {
             AddIntersectionPreviewCamera();
         }
@@ -175,6 +179,48 @@ public partial class Main : Node3D
         };
         AddChild(camera);
         camera.LookAt(target, Vector3.Up);
+        PreparePreview();
+    }
+
+    private void AddTrafficControlPreviewCamera()
+    {
+        if (_roadWorld is null)
+        {
+            return;
+        }
+
+        var control = _roadWorld.Network.TrafficControls
+            .Where(candidate => candidate.Kind == TrafficControlKind.StopSign)
+            .OrderByDescending(candidate => _roadWorld.Network.GetSegment(candidate.ApproachSegmentId).WidthMeters)
+            .ThenBy(candidate => candidate.Id, StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (control is null)
+        {
+            AddIntersectionPreviewCamera();
+            return;
+        }
+
+        var groundPosition = new Vector3((float)control.Position.X, 0.0f, (float)control.Position.Y);
+        var approachDirection = new Vector3(
+            (float)control.FacingDirection.X,
+            0.0f,
+            (float)control.FacingDirection.Y).Normalized();
+        var target = groundPosition + (Vector3.Up * 2.08f);
+        var camera = new Camera3D
+        {
+            Name = "TrafficControlPreviewCamera",
+            Position = target - (approachDirection * 3.4f) + (Vector3.Up * 0.05f),
+            Current = true,
+            Far = 200.0f,
+            Fov = 30.0f,
+        };
+        AddChild(camera);
+        camera.LookAt(target, Vector3.Up);
+        PreparePreview();
+    }
+
+    private void PreparePreview()
+    {
         if (_hud is not null)
         {
             _hud.Visible = false;

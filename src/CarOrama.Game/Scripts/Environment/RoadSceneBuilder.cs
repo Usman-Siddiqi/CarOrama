@@ -707,18 +707,15 @@ public sealed class RoadSceneBuilder
         };
         parent.AddChild(root);
 
+        if (control.Kind == TrafficControlKind.StopSign)
+        {
+            AddStopSign(root);
+            return;
+        }
+
         var pole = PrimitiveFactory.Cylinder("Pole", 0.075f, 2.2f, _pole, 12);
         pole.Position = new Vector3(0.0f, 1.1f, 0.0f);
         root.AddChild(pole);
-
-        if (control.Kind == TrafficControlKind.StopSign)
-        {
-            var sign = PrimitiveFactory.Cylinder("StopSign", 0.43f, 0.08f, _signRed, 8);
-            sign.Position = new Vector3(0.0f, 2.05f, 0.0f);
-            sign.RotationDegrees = new Vector3(90.0f, 0.0f, 0.0f);
-            root.AddChild(sign);
-            return;
-        }
 
         var housing = PrimitiveFactory.Box(
             "SignalHousing",
@@ -729,6 +726,40 @@ public sealed class RoadSceneBuilder
         AddSignalLamp(housing, "Red", 0.32f, new Color("9b1c1c"), control.State == "Red");
         AddSignalLamp(housing, "Amber", 0.0f, new Color("d69e16"), control.State == "Amber");
         AddSignalLamp(housing, "Green", -0.32f, new Color("20b45a"), control.State == "Green");
+    }
+
+    private void AddStopSign(Node3D root)
+    {
+        const float signCenterHeight = 2.08f;
+        const float poleHeight = 1.68f;
+
+        var pole = PrimitiveFactory.Cylinder("Pole", 0.075f, poleHeight, _pole, 12);
+        pole.Position = new Vector3(0.0f, poleHeight * 0.5f, 0.035f);
+        root.AddChild(pole);
+
+        var border = PrimitiveFactory.Cylinder("WhiteBorder", 0.47f, 0.065f, _white, 8);
+        border.Position = new Vector3(0.0f, signCenterHeight, 0.0f);
+        border.RotationDegrees = new Vector3(90.0f, 0.0f, 0.0f);
+        root.AddChild(border);
+
+        var face = PrimitiveFactory.Cylinder("RedFace", 0.415f, 0.04f, _signRed, 8);
+        face.Position = new Vector3(0.0f, signCenterHeight, -0.045f);
+        face.RotationDegrees = new Vector3(90.0f, 0.0f, 0.0f);
+        root.AddChild(face);
+
+        var label = new Label3D
+        {
+            Name = "StopText",
+            Text = "STOP",
+            FontSize = 64,
+            PixelSize = 0.0045f,
+            Modulate = Colors.White,
+            OutlineSize = 0,
+            DoubleSided = true,
+            Position = new Vector3(0.0f, signCenterHeight, -0.075f),
+            RotationDegrees = new Vector3(0.0f, 180.0f, 0.0f),
+        };
+        root.AddChild(label);
     }
 
     private static void AddSignalLamp(Node3D housing, string name, float y, Color color, bool active)
