@@ -156,7 +156,12 @@ public partial class Main : Node3D
 
         var intersection = _roadWorld.Network.Intersections
             .Where(candidate => candidate.Kind is IntersectionKind.Corner or IntersectionKind.ThreeWay or IntersectionKind.FourWay)
-            .OrderByDescending(candidate => candidate.Kind)
+            .OrderByDescending(candidate => candidate.IncomingLaneIds
+                .Select(_roadWorld.Network.GetLane)
+                .Select(lane => _roadWorld.Network.GetSegment(lane.SegmentId).WidthMeters)
+                .DefaultIfEmpty(0.0)
+                .Max())
+            .ThenByDescending(candidate => candidate.Kind)
             .ThenBy(candidate => candidate.NodeId, StringComparer.Ordinal)
             .FirstOrDefault() ?? _roadWorld.Network.Intersections[0];
         var target = new Vector3((float)intersection.Position.X, 0.0f, (float)intersection.Position.Y);
@@ -218,11 +223,14 @@ public partial class Main : Node3D
             referencePlant.State.SpeedMetersPerSecond <= 0.0 ||
             !finitePosition ||
             !vehicleMoved ||
-            !vehicleAccelerated)
+            !vehicleAccelerated ||
+            !_vehicle.LastLightingCommand.HeadlightsEnabled ||
+            !_vehicle.LastLightingCommand.HazardLightsEnabled)
         {
             GD.PushError(
                 $"Smoke test failed: {string.Join("; ", result.Errors)} " +
-                $"finite={finitePosition}, moved={vehicleMoved}, peakSpeed={_vehicle.PeakSpeedMetersPerSecond:F2} m/s.");
+                $"finite={finitePosition}, moved={vehicleMoved}, peakSpeed={_vehicle.PeakSpeedMetersPerSecond:F2} m/s, " +
+                $"lights={_vehicle.LastLightingCommand}.");
             GetTree().Quit(1);
             return;
         }

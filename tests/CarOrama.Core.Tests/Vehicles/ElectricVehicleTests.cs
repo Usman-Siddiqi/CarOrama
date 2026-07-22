@@ -18,6 +18,29 @@ public sealed class ElectricVehicleTests
     }
 
     [Fact]
+    public void LightingCommandExposesEffectiveHazardAndTurnIndicators()
+    {
+        var leftTurn = VehicleLightingCommand.Create(true, TurnSignalState.Left, false);
+        var hazards = VehicleLightingCommand.Create(false, TurnSignalState.Off, true);
+
+        Assert.True(leftTurn.HeadlightsEnabled);
+        Assert.True(leftTurn.LeftIndicatorEnabled);
+        Assert.False(leftTurn.RightIndicatorEnabled);
+        Assert.True(hazards.LeftIndicatorEnabled);
+        Assert.True(hazards.RightIndicatorEnabled);
+    }
+
+    [Fact]
+    public void LightingCommandRejectsUnknownTurnSignalValues()
+    {
+        var command = VehicleLightingCommand.Create(false, (TurnSignalState)999, false);
+
+        Assert.Equal(TurnSignalState.Off, command.TurnSignal);
+        Assert.False(command.LeftIndicatorEnabled);
+        Assert.False(command.RightIndicatorEnabled);
+    }
+
+    [Fact]
     public void MotorTransitionsFromTorqueLimitToPowerLimit()
     {
         var specification = new ElectricMotorSpecification();

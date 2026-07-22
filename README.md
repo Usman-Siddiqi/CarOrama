@@ -4,10 +4,10 @@ CarOrama is a long-term autonomous-driving simulation project. The current miles
 
 ## Current capabilities
 
-- Seeded, connected road graphs with intersections, directed lanes, lane boundaries, centre lines, speed limits, stop lines, traffic controls, routes, and spawn points.
-- Runtime-built roads, markings, curbs, sidewalks, stop signs, traffic lights, and lightweight roadside scenery.
-- A rigid-body electric vehicle with a single-speed motor model, configurable driven axles, regenerative and friction braking, ray-cast suspension, tire forces, collision handling, battery state of charge, a follow camera, and a live front-bumper camera feed.
-- A command-source boundary that keeps keyboard/controller input replaceable by a future driving controller.
+- Seeded, connected road graphs with local streets and multi-lane arterials, right-hand directed lanes, boundaries, centre lines, speed limits, stop lines, traffic controls, routes, and spawn points.
+- Runtime-built roads with yellow centre treatments, white lane dividers and edge lines, stop bars, zebra crossings, directional arrows, curbs, sidewalks, signs, signals, and lightweight roadside scenery.
+- A rigid-body electric vehicle with a single-speed motor model, configurable driven axles, regenerative and friction braking, ray-cast suspension, tire forces, collision handling, battery state of charge, exterior lighting, a follow camera, and a live front-bumper camera feed.
+- Separate motion and exterior-light command boundaries that keep keyboard/controller input replaceable by future driving controllers.
 - Engine-independent domain code and automated tests for the road graph and electric drivetrain.
 
 ## Technical stack
@@ -71,6 +71,9 @@ Controls:
 | Throttle | W or Up | Right trigger |
 | Regenerative braking | S or Down | Left trigger |
 | Friction brake | Space | South face button |
+| Left/right turn signal | Q / E | D-pad left/right |
+| Hazard lights | X | D-pad down |
+| Headlights | H | D-pad up |
 | Reset vehicle | R | Start |
 | New deterministic seed | N | North face button |
 

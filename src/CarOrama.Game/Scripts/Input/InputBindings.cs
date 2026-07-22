@@ -9,6 +9,10 @@ internal static class InputBindings
     public const string Throttle = "vehicle_throttle";
     public const string RegenerativeBrake = "vehicle_regenerative_brake";
     public const string FrictionBrake = "vehicle_friction_brake";
+    public const string LeftTurnSignal = "vehicle_left_turn_signal";
+    public const string RightTurnSignal = "vehicle_right_turn_signal";
+    public const string HazardLights = "vehicle_hazard_lights";
+    public const string Headlights = "vehicle_headlights";
     public const string Reset = "vehicle_reset";
     public const string NewSeed = "world_new_seed";
 
@@ -23,6 +27,10 @@ internal static class InputBindings
         AddKey(RegenerativeBrake, Key.S);
         AddKey(RegenerativeBrake, Key.Down);
         AddKey(FrictionBrake, Key.Space);
+        AddKey(LeftTurnSignal, Key.Q);
+        AddKey(RightTurnSignal, Key.E);
+        AddKey(HazardLights, Key.X);
+        AddKey(Headlights, Key.H);
         AddKey(Reset, Key.R);
         AddKey(NewSeed, Key.N);
 
@@ -31,6 +39,10 @@ internal static class InputBindings
         AddJoyAxis(Throttle, JoyAxis.TriggerRight, 1.0f);
         AddJoyAxis(RegenerativeBrake, JoyAxis.TriggerLeft, 1.0f);
         AddJoyButton(FrictionBrake, JoyButton.A);
+        AddJoyButton(LeftTurnSignal, JoyButton.DpadLeft);
+        AddJoyButton(RightTurnSignal, JoyButton.DpadRight);
+        AddJoyButton(HazardLights, JoyButton.DpadDown);
+        AddJoyButton(Headlights, JoyButton.DpadUp);
         AddJoyButton(Reset, JoyButton.Start);
         AddJoyButton(NewSeed, JoyButton.Y);
     }
@@ -73,4 +85,3 @@ internal static class InputBindings
         }
     }
 }
-

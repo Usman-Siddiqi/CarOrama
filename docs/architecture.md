@@ -31,6 +31,10 @@ replay input ─┘                                      │
                                                     ├─ Tire forces
                                                     └─ Suspension forces
 
+manual input ─┐
+future agent ─┼─> IVehicleLightingCommandSource ─> lights / indicators
+replay input ─┘
+
 RoadGenerator ─> RoadNetwork ─┬─> RoadSceneBuilder
                               ├─> routing / spawn queries
                               ├─> future ground-truth sensors
@@ -43,7 +47,9 @@ RoadGenerator ─> RoadNetwork ─┬─> RoadSceneBuilder
 
 ## Road representation
 
-The first generator produces a connected Manhattan-style graph, not unconstrained geometry. A seeded randomized spanning tree guarantees reachability, then deterministic optional links add loops. Nodes and segments receive stable IDs derived from grid coordinates rather than creation order.
+The first generator produces a connected Manhattan-style graph, not unconstrained geometry. A seeded randomized spanning tree guarantees reachability, deterministic optional links add loops, and a connected central arterial provides repeatable multi-lane coverage. Nodes and segments receive stable IDs derived from grid coordinates rather than creation order.
+
+Each segment identifies its road classification and lanes per direction. Local roads and arterials therefore differ in structured topology, width, speed limit, and markings rather than only in visual scale. Directed lanes follow right-hand traffic. Junction insets use the widest incident road so lane endpoints, zebra crossings, and stop lines remain outside the shared conflict area when a local street meets an arterial.
 
 Each directed lane stores:
 
@@ -76,6 +82,8 @@ The tire model begins with clamped longitudinal and lateral force proportional t
 
 The planned simulation protocol will have explicit `Reset(Scenario)`, `Observe()`, and `Step(Action, ticks)` operations. Actions map to normalized steering, throttle, regenerative braking, and friction braking—the same `VehicleCommand` used manually. Observations will be timestamped bundles from sensor adapters plus route and optional privileged ground truth.
 
+Exterior lights use a separate `VehicleLightingCommand`. This allows a scenario controller to command headlights, indicators, and hazards without depending on input actions or lamp scene nodes; brake lamps remain a deterministic consequence of braking commands.
+
 Python will remain a separate process. A versioned gRPC or shared-memory transport will allow local training, distributed workers, recorded replay, and independent simulator releases. No learning framework will be referenced from scene or physics assemblies.
 
 Planned metrics include collision impulse, lane departure duration, stop-line and signal violations, route progress/completion, jerk/lateral acceleration, intervention count, energy use, and wall-clock simulation throughput.
@@ -102,4 +110,3 @@ Strong iteration, tooling, and an existing Python training bridge. It was not se
 ### CARLA as the application foundation
 
 CARLA already supplies many eventual features, but using it as the foundation would shift the project toward configuring an existing simulator. CarOrama instead owns its road semantics, vehicle architecture, reset loop, and evaluation contract. CARLA remains a valuable behavioral and sensor-validation reference.
-

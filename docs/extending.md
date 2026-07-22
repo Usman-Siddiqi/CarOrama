@@ -8,6 +8,7 @@ Add generator tests for:
 
 - repeatability for a fixed seed and configuration;
 - connected road and directed-lane graphs;
+- balanced lane counts and road-width/classification agreement;
 - boundary/centre-line agreement;
 - valid successor and stop-line references;
 - viable spawn-to-destination routes.
@@ -32,6 +33,8 @@ The current tire model is a friction-circle-limited linear model, and the suspen
 Implement `IVehicleCommandSource.ReadCommand`. Return a sanitized `VehicleCommand` containing normalized steering, throttle, regenerative brake, and friction brake values.
 
 Manual controls and the scripted validation controller already use this boundary. A future remote or autonomous controller should be selected by the scenario runner and must not access `ElectricVehicle` internals, input actions, or visual nodes.
+
+Exterior lamps use the parallel `IVehicleLightingCommandSource` boundary. A controller can provide both interfaces or inject separate sources. Turn signals, hazards, and headlights are explicit commands; running lamps and brake-lamp intensity are resolved by the vehicle lighting adapter.
 
 ## Add a future sensor
 
@@ -60,4 +63,3 @@ The protocol should support:
 ## Data and assets
 
 Large maps, recordings, trained weights, and generated datasets should not be committed directly to Git. Define a versioned manifest and storage policy before adding them. Source assets need documented provenance and compatible licenses.
-

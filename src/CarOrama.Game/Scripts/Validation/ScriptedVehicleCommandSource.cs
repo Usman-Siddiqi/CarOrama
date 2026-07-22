@@ -5,7 +5,7 @@ namespace CarOrama.Game.Validation;
 /// <summary>
 /// Repeatable integration input used only by the headless smoke scenario.
 /// </summary>
-public sealed class ScriptedVehicleCommandSource : IVehicleCommandSource
+public sealed class ScriptedVehicleCommandSource : IVehicleCommandSource, IVehicleLightingCommandSource
 {
     private double _elapsedSeconds;
 
@@ -20,5 +20,13 @@ public sealed class ScriptedVehicleCommandSource : IVehicleCommandSource
             _ => VehicleCommand.Neutral,
         };
     }
-}
 
+    public VehicleLightingCommand ReadLightingCommand(double deltaSeconds)
+    {
+        _ = deltaSeconds;
+        return VehicleLightingCommand.Create(
+            headlightsEnabled: true,
+            turnSignal: TurnSignalState.Off,
+            hazardLightsEnabled: _elapsedSeconds >= 0.75);
+    }
+}

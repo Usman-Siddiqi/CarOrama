@@ -12,7 +12,9 @@ public readonly record struct Vector2D(double X, double Y)
         return length > 1e-9 ? this / length : Zero;
     }
 
-    public Vector2D PerpendicularLeft() => new(-Y, X);
+    // Road-plane Y increases southward, so the clockwise rotation is the
+    // driver's left rather than the usual Cartesian XY-plane rotation.
+    public Vector2D PerpendicularLeft() => new(Y, -X);
 
     public static double Distance(Vector2D a, Vector2D b) => (a - b).Length;
 
@@ -28,4 +30,3 @@ public readonly record struct Vector2D(double X, double Y)
 
     public static Vector2D operator /(Vector2D value, double scale) => new(value.X / scale, value.Y / scale);
 }
-

@@ -12,7 +12,13 @@ public sealed record RoadNetworkConfig
 
     public double LaneWidthMeters { get; init; } = 3.6;
 
+    public int LocalLanesPerDirection { get; init; } = 1;
+
+    public int ArterialLanesPerDirection { get; init; } = 2;
+
     public double SidewalkWidthMeters { get; init; } = 2.4;
+
+    public double IntersectionApproachSetbackMeters { get; init; } = 4.2;
 
     public double OptionalConnectionProbability { get; init; } = 0.42;
 
@@ -37,10 +43,33 @@ public sealed record RoadNetworkConfig
             throw new ArgumentOutOfRangeException(nameof(LaneWidthMeters));
         }
 
+        if (LocalLanesPerDirection is < 1 or > 3)
+        {
+            throw new ArgumentOutOfRangeException(nameof(LocalLanesPerDirection));
+        }
+
+        if (ArterialLanesPerDirection is < 2 or > 4 || ArterialLanesPerDirection < LocalLanesPerDirection)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ArterialLanesPerDirection));
+        }
+
+        if (IntersectionApproachSetbackMeters is < 3.5 or > 12.0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(IntersectionApproachSetbackMeters));
+        }
+
+        var minimumBlockSize =
+            (2.0 * ((ArterialLanesPerDirection * LaneWidthMeters) + IntersectionApproachSetbackMeters)) + 5.0;
+        if (BlockSizeMeters < minimumBlockSize)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(BlockSizeMeters),
+                "Blocks must leave usable lane length between the configured intersection approaches.");
+        }
+
         if (OptionalConnectionProbability is < 0.0 or > 1.0)
         {
             throw new ArgumentOutOfRangeException(nameof(OptionalConnectionProbability));
         }
     }
 }
-

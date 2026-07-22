@@ -18,6 +18,12 @@ public enum TrafficControlKind
     TrafficLight,
 }
 
+public enum RoadClassification
+{
+    Local,
+    Arterial,
+}
+
 public sealed record RoadNode(
     string Id,
     Vector2D Position,
@@ -29,6 +35,8 @@ public sealed record RoadSegment(
     string StartNodeId,
     string EndNodeId,
     IReadOnlyList<Vector2D> CenterLine,
+    RoadClassification Classification,
+    int LanesPerDirection,
     double WidthMeters,
     double SidewalkWidthMeters,
     IReadOnlyList<string> LaneIds);
@@ -131,4 +139,3 @@ public sealed class RoadNetwork
 
     public bool TryGetLane(string id, out Lane lane) => _laneById.TryGetValue(id, out lane!);
 }
-

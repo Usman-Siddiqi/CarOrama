@@ -13,17 +13,25 @@ public partial class ElectricVehicle : RigidBody3D
     private readonly VehicleSpecification _specification;
     private readonly ElectricDrivetrain _drivetrain;
     private readonly IVehicleCommandSource _commandSource;
+    private readonly IVehicleLightingCommandSource _lightingCommandSource;
     private readonly SuspensionSpecification _suspensionSpecification = new();
     private readonly TireForceModel _tireModel = new(new TireSpecification());
     private readonly List<WheelContact> _wheels = [];
+    private VehicleExteriorLighting? _exteriorLighting;
     private float _steeringInput;
     private float _steeringAngleRadians;
     private Transform3D _resetTransform;
 
-    public ElectricVehicle(VehicleSpecification specification, IVehicleCommandSource commandSource)
+    public ElectricVehicle(
+        VehicleSpecification specification,
+        IVehicleCommandSource commandSource,
+        IVehicleLightingCommandSource? lightingCommandSource = null)
     {
         _specification = specification ?? throw new ArgumentNullException(nameof(specification));
         _commandSource = commandSource ?? throw new ArgumentNullException(nameof(commandSource));
+        _lightingCommandSource = lightingCommandSource ??
+            commandSource as IVehicleLightingCommandSource ??
+            DisabledVehicleLightingCommandSource.Instance;
         _drivetrain = new ElectricDrivetrain(specification);
         Name = "ElectricVehicle";
         Mass = (float)specification.MassKilograms;
@@ -54,6 +62,14 @@ public partial class ElectricVehicle : RigidBody3D
 
     public VehicleCommand LastCommand { get; private set; } = VehicleCommand.Neutral;
 
+    public VehicleLightingCommand LastLightingCommand { get; private set; } = VehicleLightingCommand.Off;
+
+    public bool BrakeLightsActive => _exteriorLighting?.BrakeLightsActive ?? false;
+
+    public bool LeftIndicatorLit => _exteriorLighting?.LeftIndicatorLit ?? false;
+
+    public bool RightIndicatorLit => _exteriorLighting?.RightIndicatorLit ?? false;
+
     public void SetResetTransform(Transform3D transform)
     {
         _resetTransform = transform;
@@ -78,6 +94,7 @@ public partial class ElectricVehicle : RigidBody3D
     public override void _PhysicsProcess(double delta)
     {
         LastCommand = _commandSource.ReadCommand(delta);
+        LastLightingCommand = _lightingCommandSource.ReadLightingCommand(delta);
         PeakSpeedMetersPerSecond = Math.Max(PeakSpeedMetersPerSecond, SpeedMetersPerSecond);
         _steeringInput = Mathf.MoveToward(_steeringInput, (float)LastCommand.Steering, (float)(delta * 3.8));
         _steeringAngleRadians = Mathf.DegToRad((float)_specification.MaximumSteeringAngleDegrees) * _steeringInput;
@@ -98,6 +115,7 @@ public partial class ElectricVehicle : RigidBody3D
 
         ApplyBodyResistance(bodyForward, signedForwardSpeed);
         UpdateWheelVisuals((float)delta, signedForwardSpeed);
+        _exteriorLighting?.ApplyLampState(LastLightingCommand, LastCommand, delta);
     }
 
     private void ApplyWheelForces(
@@ -215,6 +233,9 @@ public partial class ElectricVehicle : RigidBody3D
             new Transform3D(Basis.Identity, new Vector3(0.0f, -0.2f, 0.18f)),
             batteryMaterial));
 
+        _exteriorLighting = new VehicleExteriorLighting();
+        AddChild(_exteriorLighting);
+
         var halfTrack = (float)_specification.TrackWidthMeters * 0.5f;
         var halfWheelbase = (float)_specification.WheelbaseMeters * 0.5f;
         AddWheel("FrontLeft", new Vector3(-halfTrack, 0.15f, -halfWheelbase), true, IsDriven(front: true), tireMaterial, rimMaterial);
@@ -306,5 +327,16 @@ public partial class ElectricVehicle : RigidBody3D
         public SuspensionModel Suspension { get; } = suspension;
 
         public float SpinRadians { get; set; }
+    }
+
+    private sealed class DisabledVehicleLightingCommandSource : IVehicleLightingCommandSource
+    {
+        public static DisabledVehicleLightingCommandSource Instance { get; } = new();
+
+        public VehicleLightingCommand ReadLightingCommand(double deltaSeconds)
+        {
+            _ = deltaSeconds;
+            return VehicleLightingCommand.Off;
+        }
     }
 }

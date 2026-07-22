@@ -30,6 +30,8 @@ public sealed class GridRoadNetworkGenerator : IRoadNetworkGenerator
         random.Shuffle(shuffled);
 
         var selected = SelectConnectedEdges(config, candidates, shuffled, random)
+            .Concat(candidates.Where(edge => IsArterial(config, edge)))
+            .Distinct()
             .OrderBy(edge => edge.Id, StringComparer.Ordinal)
             .ToArray();
 
@@ -37,11 +39,12 @@ public sealed class GridRoadNetworkGenerator : IRoadNetworkGenerator
         var incident = BuildIncidentMap(config, selected);
         var nodes = BuildNodes(config, positions, incident);
 
-        var laneDrafts = new List<LaneDraft>(selected.Length * 2);
+        var junctionHalfWidths = BuildJunctionHalfWidths(config, selected);
+        var laneDrafts = new List<LaneDraft>(selected.Length * config.ArterialLanesPerDirection * 2);
         var segments = new List<RoadSegment>(selected.Length);
         foreach (var edge in selected)
         {
-            var segment = BuildSegment(config, edge, positions, laneDrafts);
+            var segment = BuildSegment(config, edge, positions, junctionHalfWidths, laneDrafts);
             segments.Add(segment);
         }
 
@@ -135,6 +138,31 @@ public sealed class GridRoadNetworkGenerator : IRoadNetworkGenerator
         return selected;
     }
 
+    private static bool IsArterial(RoadNetworkConfig config, CandidateEdge edge)
+    {
+        var centralRow = (config.GridHeight - 1) / 2;
+        var centralColumn = (config.GridWidth - 1) / 2;
+        return edge.IsHorizontal ? edge.A.Y == centralRow : edge.A.X == centralColumn;
+    }
+
+    private static IReadOnlyDictionary<string, double> BuildJunctionHalfWidths(
+        RoadNetworkConfig config,
+        IReadOnlyList<CandidateEdge> selected)
+    {
+        var halfWidths = new Dictionary<string, double>(StringComparer.Ordinal);
+        foreach (var edge in selected)
+        {
+            var lanesPerDirection = IsArterial(config, edge)
+                ? config.ArterialLanesPerDirection
+                : config.LocalLanesPerDirection;
+            var halfWidth = lanesPerDirection * config.LaneWidthMeters;
+            halfWidths[edge.A.NodeId] = Math.Max(halfWidths.GetValueOrDefault(edge.A.NodeId), halfWidth);
+            halfWidths[edge.B.NodeId] = Math.Max(halfWidths.GetValueOrDefault(edge.B.NodeId), halfWidth);
+        }
+
+        return halfWidths;
+    }
+
     private static Dictionary<string, Vector2D> BuildNodePositions(RoadNetworkConfig config)
     {
         var positions = new Dictionary<string, Vector2D>(StringComparer.Ordinal);
@@ -217,45 +245,76 @@ public sealed class GridRoadNetworkGenerator : IRoadNetworkGenerator
         RoadNetworkConfig config,
         CandidateEdge edge,
         IReadOnlyDictionary<string, Vector2D> positions,
+        IReadOnlyDictionary<string, double> junctionHalfWidths,
         ICollection<LaneDraft> laneDrafts)
     {
         var start = positions[edge.A.NodeId];
         var end = positions[edge.B.NodeId];
         var direction = (end - start).Normalized();
         var left = direction.PerpendicularLeft();
-        var halfRoadWidth = config.LaneWidthMeters;
-        var junctionInset = halfRoadWidth + 1.2;
-        var laneStart = start + (direction * junctionInset);
-        var laneEnd = end - (direction * junctionInset);
+        var classification = IsArterial(config, edge)
+            ? RoadClassification.Arterial
+            : RoadClassification.Local;
+        var lanesPerDirection = classification == RoadClassification.Arterial
+            ? config.ArterialLanesPerDirection
+            : config.LocalLanesPerDirection;
+        var startInset = junctionHalfWidths[edge.A.NodeId] + config.IntersectionApproachSetbackMeters;
+        var endInset = junctionHalfWidths[edge.B.NodeId] + config.IntersectionApproachSetbackMeters;
+        var laneStart = start + (direction * startInset);
+        var laneEnd = end - (direction * endInset);
+        var laneIds = new List<string>(lanesPerDirection * 2);
 
-        var abId = $"lane:{edge.Id}:ab";
-        var baId = $"lane:{edge.Id}:ba";
-        var abCenter = new[]
+        for (var index = 0; index < lanesPerDirection; index++)
         {
-            laneStart - (left * (config.LaneWidthMeters * 0.5)),
-            laneEnd - (left * (config.LaneWidthMeters * 0.5)),
-        };
-        var baCenter = new[]
-        {
-            laneEnd + (left * (config.LaneWidthMeters * 0.5)),
-            laneStart + (left * (config.LaneWidthMeters * 0.5)),
-        };
+            var offset = config.LaneWidthMeters * (index + 0.5);
+            var abId = $"lane:{edge.Id}:ab:{index}";
+            var baId = $"lane:{edge.Id}:ba:{index}";
+            var abCenter = new[]
+            {
+                laneStart - (left * offset),
+                laneEnd - (left * offset),
+            };
+            var baCenter = new[]
+            {
+                laneEnd + (left * offset),
+                laneStart + (left * offset),
+            };
 
-        laneDrafts.Add(CreateLaneDraft(config, abId, edge.Id, edge.A.NodeId, edge.B.NodeId, abCenter));
-        laneDrafts.Add(CreateLaneDraft(config, baId, edge.Id, edge.B.NodeId, edge.A.NodeId, baCenter));
+            laneDrafts.Add(CreateLaneDraft(
+                config,
+                classification,
+                abId,
+                edge.Id,
+                edge.A.NodeId,
+                edge.B.NodeId,
+                abCenter));
+            laneDrafts.Add(CreateLaneDraft(
+                config,
+                classification,
+                baId,
+                edge.Id,
+                edge.B.NodeId,
+                edge.A.NodeId,
+                baCenter));
+            laneIds.Add(abId);
+            laneIds.Add(baId);
+        }
 
         return new RoadSegment(
             edge.Id,
             edge.A.NodeId,
             edge.B.NodeId,
             new[] { start, end },
-            config.LaneWidthMeters * 2.0,
+            classification,
+            lanesPerDirection,
+            config.LaneWidthMeters * lanesPerDirection * 2.0,
             config.SidewalkWidthMeters,
-            new[] { abId, baId });
+            laneIds);
     }
 
     private static LaneDraft CreateLaneDraft(
         RoadNetworkConfig config,
+        RoadClassification classification,
         string id,
         string segmentId,
         string startNodeId,
@@ -266,7 +325,6 @@ public sealed class GridRoadNetworkGenerator : IRoadNetworkGenerator
         var left = direction.PerpendicularLeft() * (config.LaneWidthMeters * 0.5);
         var boundaryLeft = center.Select(point => point + left).ToArray();
         var boundaryRight = center.Select(point => point - left).ToArray();
-        var arterial = segmentId.Contains(":h:", StringComparison.Ordinal);
         return new LaneDraft(
             id,
             segmentId,
@@ -277,7 +335,9 @@ public sealed class GridRoadNetworkGenerator : IRoadNetworkGenerator
             boundaryRight,
             direction,
             config.LaneWidthMeters,
-            arterial ? config.ArterialSpeedLimitMetersPerSecond : config.LocalSpeedLimitMetersPerSecond);
+            classification == RoadClassification.Arterial
+                ? config.ArterialSpeedLimitMetersPerSecond
+                : config.LocalSpeedLimitMetersPerSecond);
     }
 
     private static IReadOnlyList<Lane> LinkLanesAndBuildIntersections(

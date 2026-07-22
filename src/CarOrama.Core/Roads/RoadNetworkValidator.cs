@@ -30,17 +30,59 @@ public static class RoadNetworkValidator
         {
             Require(nodeIds.Contains(segment.StartNodeId), $"Segment {segment.Id} has an unknown start node.", errors);
             Require(nodeIds.Contains(segment.EndNodeId), $"Segment {segment.Id} has an unknown end node.", errors);
+            Require(segment.LanesPerDirection > 0, $"Segment {segment.Id} has no lanes per direction.", errors);
+            Require(
+                segment.Classification != RoadClassification.Arterial || segment.LanesPerDirection >= 2,
+                $"Arterial segment {segment.Id} must provide multiple lanes per direction.",
+                errors);
             Require(segment.WidthMeters > 0.0, $"Segment {segment.Id} has a non-positive width.", errors);
             Require(segment.CenterLine.Count >= 2, $"Segment {segment.Id} has no usable centre line.", errors);
+            Require(
+                segment.LaneIds.Count == segment.LanesPerDirection * 2,
+                $"Segment {segment.Id} does not have balanced lane capacity.",
+                errors);
+
+            var segmentLanes = new List<Lane>(segment.LaneIds.Count);
             foreach (var laneId in segment.LaneIds)
             {
                 Require(laneIds.Contains(laneId), $"Segment {segment.Id} references unknown lane {laneId}.", errors);
+                if (network.TryGetLane(laneId, out var lane))
+                {
+                    segmentLanes.Add(lane);
+                    Require(lane.SegmentId == segment.Id, $"Segment {segment.Id} references lane {laneId} owned by another segment.", errors);
+                }
+            }
+
+            if (segmentLanes.Count == segment.LaneIds.Count)
+            {
+                var forwardCount = segmentLanes.Count(lane =>
+                    lane.StartNodeId == segment.StartNodeId && lane.EndNodeId == segment.EndNodeId);
+                var reverseCount = segmentLanes.Count(lane =>
+                    lane.StartNodeId == segment.EndNodeId && lane.EndNodeId == segment.StartNodeId);
+                Require(
+                    forwardCount == segment.LanesPerDirection && reverseCount == segment.LanesPerDirection,
+                    $"Segment {segment.Id} does not have balanced opposing lanes.",
+                    errors);
+
+                var combinedLaneWidth = segmentLanes.Sum(lane => lane.WidthMeters);
+                Require(
+                    Math.Abs(segment.WidthMeters - combinedLaneWidth) < 1e-6,
+                    $"Segment {segment.Id} width does not match its lane geometry.",
+                    errors);
             }
         }
 
         foreach (var lane in network.Lanes)
         {
             Require(segmentIds.Contains(lane.SegmentId), $"Lane {lane.Id} has an unknown segment.", errors);
+            if (segmentIds.Contains(lane.SegmentId))
+            {
+                Require(
+                    network.GetSegment(lane.SegmentId).LaneIds.Contains(lane.Id, StringComparer.Ordinal),
+                    $"Lane {lane.Id} is not referenced by its segment.",
+                    errors);
+            }
+
             Require(nodeIds.Contains(lane.StartNodeId) && nodeIds.Contains(lane.EndNodeId), $"Lane {lane.Id} has an unknown endpoint.", errors);
             Require(lane.CenterLine.Count >= 2, $"Lane {lane.Id} has no usable centre line.", errors);
             Require(lane.LeftBoundary.Count == lane.CenterLine.Count, $"Lane {lane.Id} left boundary is misaligned.", errors);
@@ -141,4 +183,3 @@ public static class RoadNetworkValidator
         }
     }
 }
-
