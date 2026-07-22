@@ -35,9 +35,11 @@ Exit condition: one vehicle can be driven through the generated network without 
 
 Current progress:
 
-- 3A: the eight-camera rig and high-level longitudinal brake allocator are implemented; synchronized sensor timestamps and recording remain.
-- 3B: the versioned contracts and synchronous deterministic reference runner are implemented and tested; the Godot rigid-body adapter and external transport remain.
-- 3C: route-relative ground truth and the privileged pure-pursuit/speed/stop baseline complete seeded straight and intersection-turn routes; live collision/violation metrics, episode recording, and fixed seed splits remain.
+- 3A complete: the eight-camera rig, drift-free physics-tick scheduler, synchronized atomic PNG capture, and high-level longitudinal brake allocator are implemented and validated.
+- 3B complete in process: versioned contracts, the synchronous deterministic runner, and a pausable exact-substep Godot/Jolt adapter are implemented. External transport remains deferred until a trainer exists.
+- 3C complete: route-relative ground truth, live rule/safety metrics, quality-gated reference driver, immutable episode recording, and fixed disjoint seed splits are implemented. All 24 configured Jolt routes pass the current quality gate.
+- 3D not started: dynamic actors and scenario diversity remain the next major environment milestone.
+- 3E partial: synchronized RGB recording with calibration/build metadata is complete; semantic/depth and other sensors plus the Python bridge remain.
 
 ### 3A — vehicle sensing and control semantics
 
@@ -88,9 +90,9 @@ Exit condition: policies can be trained and evaluated without scene-node access 
 - Driving agents and learning algorithms.
 - LiDAR, radar, GNSS, IMU, and learned perception pipelines.
 - Traffic vehicles, pedestrians, and traffic-flow simulation.
-- Dataset and distributed-training infrastructure.
+- Distributed worker orchestration and external training infrastructure.
 - High-fidelity tire calibration and production vehicle assets.
 
 ## Work order
 
-Complete milestones 3A through 3E in order. A small privileged-state training experiment may begin after 3C; camera-based training must wait for synchronized sensor capture and scenario diversity in 3D/3E.
+Static-road privileged-state and RGB imitation-learning experiments may now begin. Results must be described as lane/route-following research, not general autonomous driving. Broader camera-policy training must wait for scenario diversity in 3D and labels/extra sensors in 3E.

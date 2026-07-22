@@ -47,6 +47,7 @@ public sealed class ActuatedTrafficSignalController
 {
     private readonly IReadOnlyDictionary<string, TrafficSignalPhase> _phaseByControlId;
     private readonly HashSet<string> _demandedControlIds = new(StringComparer.Ordinal);
+    private readonly TrafficSignalPhase _initialPhase;
     private double _stageElapsedSeconds;
     private double _secondsSinceCurrentPhaseDemand;
 
@@ -64,7 +65,8 @@ public sealed class ActuatedTrafficSignalController
         _phaseByControlId = new Dictionary<string, TrafficSignalPhase>(phaseByControlId, StringComparer.Ordinal);
         Timing = timing ?? new TrafficSignalTiming();
         Timing.Validate();
-        CurrentPhase = HasPhase(initialPhase) ? initialPhase : Other(initialPhase);
+        _initialPhase = HasPhase(initialPhase) ? initialPhase : Other(initialPhase);
+        CurrentPhase = _initialPhase;
     }
 
     public TrafficSignalTiming Timing { get; }
@@ -74,6 +76,15 @@ public sealed class ActuatedTrafficSignalController
     public TrafficSignalState CurrentPhaseState { get; private set; } = TrafficSignalState.Green;
 
     public double StageElapsedSeconds => _stageElapsedSeconds;
+
+    public void Reset()
+    {
+        CurrentPhase = _initialPhase;
+        CurrentPhaseState = TrafficSignalState.Green;
+        _stageElapsedSeconds = 0.0;
+        _secondsSinceCurrentPhaseDemand = 0.0;
+        _demandedControlIds.Clear();
+    }
 
     public void Step(double deltaSeconds, IEnumerable<string> demandedControlIds)
     {

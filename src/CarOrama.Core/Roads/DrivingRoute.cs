@@ -83,11 +83,7 @@ public sealed class DrivingRoute
             var lane = lanes[laneIndex];
             if (laneIndex > 0)
             {
-                AddSegment(
-                    lane.Id,
-                    lanes[laneIndex - 1].CenterLine[^1],
-                    lane.CenterLine[0],
-                    isIntersectionConnector: true);
+                AddIntersectionConnector(lanes[laneIndex - 1], lane);
             }
 
             for (var pointIndex = 1; pointIndex < lane.CenterLine.Count; pointIndex++)
@@ -125,6 +121,37 @@ public sealed class DrivingRoute
                 length,
                 isIntersectionConnector));
             distance += length;
+        }
+
+        void AddIntersectionConnector(Lane incoming, Lane outgoing)
+        {
+            const int curveSegments = 8;
+            var start = incoming.CenterLine[^1];
+            var end = outgoing.CenterLine[0];
+            var chordLength = Vector2D.Distance(start, end);
+            if (chordLength <= 1e-9)
+            {
+                return;
+            }
+
+            // Cubic handles preserve the incoming and outgoing lane tangents. The
+            // structured connector then describes a plausible path through the
+            // conflict area instead of a diagonal with discontinuous headings.
+            var handleLength = chordLength * 0.5;
+            var firstControl = start + (incoming.Direction * handleLength);
+            var secondControl = end - (outgoing.Direction * handleLength);
+            var previousPoint = start;
+            for (var sample = 1; sample <= curveSegments; sample++)
+            {
+                var amount = sample / (double)curveSegments;
+                var inverse = 1.0 - amount;
+                var point = (start * (inverse * inverse * inverse)) +
+                    (firstControl * (3.0 * inverse * inverse * amount)) +
+                    (secondControl * (3.0 * inverse * amount * amount)) +
+                    (end * (amount * amount * amount));
+                AddSegment(outgoing.Id, previousPoint, point, isIntersectionConnector: true);
+                previousPoint = point;
+            }
         }
     }
 
@@ -166,14 +193,21 @@ public sealed class DrivingRoute
         return found;
     }
 
-    internal RoutePathProjection Project(Vector2D point, double minimumProgressMeters)
+    internal RoutePathProjection Project(
+        Vector2D point,
+        double minimumProgressMeters,
+        double maximumProgressMeters = double.PositiveInfinity)
     {
-        if (!double.IsFinite(point.X) || !double.IsFinite(point.Y) || !double.IsFinite(minimumProgressMeters))
+        if (!double.IsFinite(point.X) || !double.IsFinite(point.Y) ||
+            !double.IsFinite(minimumProgressMeters) ||
+            double.IsNaN(maximumProgressMeters) ||
+            maximumProgressMeters < minimumProgressMeters)
         {
             throw new ArgumentOutOfRangeException(nameof(point), "Projection values must be finite.");
         }
 
         var minimum = Math.Clamp(minimumProgressMeters, 0.0, TotalLengthMeters);
+        var maximum = Math.Clamp(maximumProgressMeters, minimum, TotalLengthMeters);
         RoutePathProjection? best = null;
         var bestDistanceSquared = double.PositiveInfinity;
         foreach (var segment in _pathSegments)
@@ -183,11 +217,19 @@ public sealed class DrivingRoute
                 continue;
             }
 
+            if (segment.StartDistanceMeters - 1e-9 > maximum)
+            {
+                break;
+            }
+
             var projection = ProjectOntoSegment(point, segment);
             var minimumAmount = minimum <= segment.StartDistanceMeters
                 ? 0.0
                 : Math.Clamp((minimum - segment.StartDistanceMeters) / segment.LengthMeters, 0.0, 1.0);
-            var amount = Math.Max(projection.Amount, minimumAmount);
+            var maximumAmount = maximum >= segment.EndDistanceMeters
+                ? 1.0
+                : Math.Clamp((maximum - segment.StartDistanceMeters) / segment.LengthMeters, 0.0, 1.0);
+            var amount = Math.Clamp(projection.Amount, minimumAmount, maximumAmount);
             var projectedPoint = Vector2D.Lerp(segment.Start, segment.End, amount);
             var distanceSquared = SquaredDistance(point, projectedPoint);
             if (distanceSquared >= bestDistanceSquared)

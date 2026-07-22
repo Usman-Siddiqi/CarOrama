@@ -1,6 +1,6 @@
 # CarOrama
 
-CarOrama is a long-term autonomous-driving simulation project. The current milestone provides a deterministic, machine-readable road environment, one manually drivable electric vehicle, and an engine-independent reference episode loop. It intentionally stops before learned policies, traffic participants, or simulated perception datasets.
+CarOrama is a long-term autonomous-driving simulation project. The current milestone provides a deterministic, machine-readable road environment, one manually drivable electric vehicle, fixed-step reference and Godot/Jolt episode loops, and a crash-safe synchronized RGB dataset recorder. It intentionally stops before learned policies and dynamic traffic participants.
 
 ## Current capabilities
 
@@ -11,6 +11,9 @@ CarOrama is a long-term autonomous-driving simulation project. The current miles
 - Separate motion and exterior-light command boundaries that keep keyboard/controller input replaceable by future driving controllers.
 - A versioned reset/observe/step protocol with exact control/physics ticks, deterministic route ground truth, cumulative metrics, and terminal/truncation semantics.
 - A faster-than-real-time reference environment using the EV drivetrain, a bicycle motion model, regenerative/friction brake allocation, and a non-learning route-following baseline.
+- A pausable Godot/Jolt episode adapter that advances an exact integer number of physics ticks per action and remains paused while an external controller or recorder works.
+- Fixed training, validation, and held-out test seed manifests; route-aware collision, lane, speeding, stop-sign, red-light, comfort, energy, and completion metrics; and quality-gated reference demonstrations.
+- Drift-free simulation-time camera scheduling, atomic PNG capture for all eight calibrated views, JSON Lines action/observation indexing, calibration/build metadata, and crash-detectable episode and dataset completion markers.
 - Engine-independent domain code and automated tests for the road graph, electric drivetrain, episode loop, and baseline controller.
 
 ## Technical stack
@@ -41,6 +44,9 @@ src/
 tests/
   CarOrama.Core.Tests/ fast domain tests
 docs/                  decisions, implementation plan, and extension guidance
+tools/                 manifest export and fast reference recording CLI
+config/                fixed scenario splits
+scripts/               validation and Godot/Jolt dataset recording entry points
 ```
 
 The dependency direction is one-way: `CarOrama.Game -> CarOrama.Core`. Core code never references Godot. Future sensor, agent, scenario-runner, and telemetry adapters will depend on stable domain interfaces rather than player input or scene-node details.
@@ -89,6 +95,7 @@ The current seed and compact vehicle telemetry are shown on screen. The default 
 dotnet test CarOrama.sln --configuration Release
 godot --headless --path src/CarOrama.Game --build-solutions --quit
 godot --headless --path src/CarOrama.Game -- --smoke-test
+godot --headless --path src/CarOrama.Game -- --episode-smoke-test
 ```
 
 The smoke test creates a world, validates its structured network, advances the vehicle briefly, and exits with a non-zero status on failure. See [Validation](docs/validation.md) for the expected checks.
@@ -99,17 +106,35 @@ To run the complete sequence with one command, set `CARORAMA_GODOT` to the Godot
 ./scripts/validate.ps1
 ```
 
+## Record a dataset
+
+The default recorder runs the privileged reference driver through the real Godot/Jolt vehicle and captures all eight RGB channels. Output is placed under the ignored `artifacts/datasets` directory and is never overwritten:
+
+```powershell
+$env:CARORAMA_GODOT = 'C:\path\to\Godot_v4.6.1-stable_mono_win64.exe'
+./scripts/record-dataset.ps1 -Split Training -MaxEpisodes 1 -DatasetId first-camera-run
+```
+
+Use state-only mode for fast physics and quality regression without rendering:
+
+```powershell
+./scripts/record-dataset.ps1 -NoCameras -DatasetId jolt-regression
+```
+
+The fixed-FPS offline runner is faster than real time on suitable hardware. A recording succeeds only when every selected route completes with no collision, lane departure, red-light violation, rolling stop, or speeding interval. See [Dataset format](docs/dataset-format.md) for the layout and lifecycle rules.
+
 ## Current scope and next extensions
 
-This milestone does **not** contain learned driving policies, neural networks, reinforcement or imitation learning, sensor recording or perception models, LiDAR/radar, traffic vehicles, pedestrians, or a traffic simulation. The included privileged-state controller is a deterministic reference baseline, not a learned policy.
+This milestone does **not** contain learned driving policies, neural networks, reinforcement learning, semantic/depth perception labels, LiDAR/radar, traffic vehicles, pedestrians, or traffic simulation. The included privileged-state controller is a deterministic reference driver and demonstration source, not a learned policy.
+
+The repository is now suitable for collecting clean static-road privileged-state or RGB imitation-learning data. It is not yet a sufficient dataset source for a general self-driving policy: dynamic traffic actors, pedestrians, occlusions, weather/lighting diversity, semantic labels, and a separate Python training/evaluation bridge remain required.
 
 The next architectural increments should be:
 
-1. Add a Godot rigid-body episode adapter that implements the same fixed-step semantics as the fast reference environment.
-2. Complete collision and traffic-law metrics, deterministic episode recording, and train/validation/held-out seed manifests.
-3. Add synchronized sensor capture and ground-truth labels before LiDAR, radar, GNSS, and IMU implementations.
-4. Add OpenDRIVE import/export and richer lane topology while keeping stable internal identifiers.
-5. Add batched headless workers and dataset infrastructure, and only then connect Python training code.
+1. Add deterministic traffic vehicles, pedestrians, cyclists, parked/occluding actors, and scenario curricula.
+2. Add semantic/depth labels, then LiDAR, radar, GNSS, and IMU with configurable noise, latency, and dropout.
+3. Add OpenDRIVE import/export, grades, ramps, roundabouts, and richer lane topology while keeping stable identifiers.
+4. Add batched workers and a separate Python training/evaluation package over the versioned protocol.
 
 ## License
 

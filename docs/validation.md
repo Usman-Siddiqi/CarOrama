@@ -8,6 +8,8 @@ Run from the repository root:
 dotnet test CarOrama.sln --configuration Release
 godot --headless --path src/CarOrama.Game --build-solutions --quit
 godot --headless --path src/CarOrama.Game -- --smoke-test
+godot --headless --path src/CarOrama.Game -- --episode-smoke-test
+godot --path src/CarOrama.Game --rendering-method gl_compatibility -- --dataset-smoke-test
 ```
 
 The core suite checks:
@@ -33,8 +35,23 @@ The core suite checks:
 - longitudinal action allocation prioritizes available regeneration and blends friction braking at low speed, high state of charge, or strong deceleration;
 - identical resets and action sequences produce identical observations, rewards, metrics, and termination state;
 - the privileged baseline completes seeded straight and ninety-degree routes without lane departure and stops for signals/stop signs.
+- split manifests keep procedural seeds disjoint and generate stable scenario and route identifiers;
+- bounded route projection cannot jump to a spatially nearby but unreachable future lane;
+- camera scheduling maps sensor frequencies to exact consecutive physics ticks without drift;
+- rule metrics detect stop-line crossings, red signals, rolling stops, speeding exposure, and lane-departure exposure;
+- the dataset writer enforces tick alignment, safe relative frame paths, no-overwrite behavior, temporary streams, and episode/dataset completion markers.
 
-The engine smoke test checks that a network is generated, scene geometry and a vehicle are instantiated, structured data validation passes, traffic-signal runtime states are available, all eight camera channels are registered without rendering in headless mode, exterior-light commands reach the vehicle, and a short fixed-step drivetrain scenario stays finite.
+The engine smoke test checks that a network is generated, scene geometry and a vehicle are instantiated, structured data validation passes, traffic-signal runtime states are available, all eight camera channels are registered without rendering in headless mode, exterior-light commands reach the vehicle, and a short fixed-step drivetrain scenario stays finite. The episode smoke test verifies 40 control actions produce exactly 240 Jolt ticks while the tree remains paused between actions. The renderer-backed dataset smoke test writes 32 synchronized frames across all eight cameras and verifies atomic stream finalization and both completion-marker levels.
+
+The renderer-backed smoke cannot run with Godot's dummy headless renderer. Set `CARORAMA_SKIP_RENDER_VALIDATION=1` only on a machine without a render-capable display; the remaining checks still run.
+
+For the complete fixed split over real Jolt physics without camera rendering:
+
+```powershell
+./scripts/record-dataset.ps1 -NoCameras -DatasetId full-jolt-regression
+```
+
+The training-readiness release gate requires all 24 configured episodes to complete with zero collisions, lane departures, speeding duration, red-light violations, and stop-sign violations. The July 2026 baseline passes 24/24 across 16 training, 4 validation, and 4 held-out test scenarios.
 
 The complete sequence is also available through `scripts/validate.ps1` on Windows or `scripts/validate.sh` on macOS/Linux. Set `CARORAMA_GODOT` when the Godot .NET executable is not on `PATH`.
 

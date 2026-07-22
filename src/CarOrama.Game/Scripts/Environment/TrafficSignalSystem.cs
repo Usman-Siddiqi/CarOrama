@@ -41,6 +41,16 @@ public sealed partial class TrafficSignalSystem : Node
         throw new KeyNotFoundException($"No active traffic signal exists for '{controlId}'.");
     }
 
+    public void Reset()
+    {
+        foreach (var intersection in _controllers.Values)
+        {
+            intersection.Controller.Reset();
+        }
+
+        ApplyAllStates();
+    }
+
     public override void _PhysicsProcess(double delta)
     {
         var vehiclePosition = ObservedVehicle is null || !IsInstanceValid(ObservedVehicle)

@@ -109,4 +109,20 @@ public sealed class ActuatedTrafficSignalControllerTests
             Assert.False(horizontalGreen && verticalGreen);
         }
     }
+
+    [Fact]
+    public void ResetRestoresTheDeterministicInitialPhaseAndClearsDemand()
+    {
+        var controller = new ActuatedTrafficSignalController(Phases, Timing);
+        controller.Step(9.0, ["north"]);
+        Assert.Equal(TrafficSignalPhase.Vertical, controller.CurrentPhase);
+
+        controller.Reset();
+
+        Assert.Equal(TrafficSignalPhase.Horizontal, controller.CurrentPhase);
+        Assert.Equal(TrafficSignalState.Green, controller.CurrentPhaseState);
+        Assert.Equal(0.0, controller.StageElapsedSeconds);
+        controller.Step(Timing.MinimumGreenSeconds, []);
+        Assert.Equal(TrafficSignalState.Green, controller.GetState("east"));
+    }
 }

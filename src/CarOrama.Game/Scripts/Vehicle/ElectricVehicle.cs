@@ -50,7 +50,14 @@ public partial class ElectricVehicle : RigidBody3D
         CenterOfMassMode = CenterOfMassModeEnum.Custom;
         CenterOfMass = new Vector3(0.0f, -0.34f, 0.12f);
         PhysicsMaterialOverride = new PhysicsMaterial { Friction = 0.32f, Bounce = 0.02f };
-        BodyEntered += _ => CollisionCount++;
+        BodyEntered += body =>
+        {
+            if (!body.IsInGroup("drivable_surface"))
+            {
+                CollisionCount++;
+                LastCollisionBodyName = body.Name;
+            }
+        };
         BuildVehicleNodes();
     }
 
@@ -67,6 +74,8 @@ public partial class ElectricVehicle : RigidBody3D
     public int GroundedWheelCount { get; private set; }
 
     public int CollisionCount { get; private set; }
+
+    public string? LastCollisionBodyName { get; private set; }
 
     public VehicleCommand LastCommand { get; private set; } = VehicleCommand.Neutral;
 
@@ -91,8 +100,18 @@ public partial class ElectricVehicle : RigidBody3D
         LinearVelocity = Vector3.Zero;
         AngularVelocity = Vector3.Zero;
         Sleeping = false;
+        _drivetrain.Battery.SetStateOfCharge(_specification.Battery.InitialStateOfCharge);
+        _steeringInput = 0.0f;
+        _steeringAngleRadians = 0.0f;
+        PeakSpeedMetersPerSecond = 0.0;
+        MotorSpeedRpm = 0.0;
+        BatteryPowerKilowatts = 0.0;
+        GroundedWheelCount = 0;
         Freeze = false;
         CollisionCount = 0;
+        LastCollisionBodyName = null;
+        LastCommand = VehicleCommand.Neutral;
+        LastLightingCommand = VehicleLightingCommand.Off;
         foreach (var wheel in _wheels)
         {
             wheel.Suspension.Reset();

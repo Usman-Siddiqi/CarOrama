@@ -24,5 +24,12 @@ if ([string]::IsNullOrWhiteSpace($GodotExecutable)) {
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 & $GodotExecutable --headless --path src/CarOrama.Game -- --smoke-test
-exit $LASTEXITCODE
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+& $GodotExecutable --headless --path src/CarOrama.Game -- --episode-smoke-test
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+if ($env:CARORAMA_SKIP_RENDER_VALIDATION -ne '1') {
+    & $GodotExecutable --path src/CarOrama.Game --rendering-method gl_compatibility -- --dataset-smoke-test
+}
+exit $LASTEXITCODE

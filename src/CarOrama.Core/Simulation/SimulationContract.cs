@@ -4,7 +4,7 @@ namespace CarOrama.Core.Simulation;
 
 public static class SimulationContract
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
 }
 
 internal static class SimulationContractValidation

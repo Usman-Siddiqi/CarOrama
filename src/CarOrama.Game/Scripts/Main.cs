@@ -1,11 +1,14 @@
 using CarOrama.Core.Control;
+using CarOrama.Core.Data;
 using CarOrama.Core.Geometry;
 using CarOrama.Core.Roads;
 using CarOrama.Core.Sensors;
+using CarOrama.Core.Simulation;
 using CarOrama.Core.Vehicles;
 using CarOrama.Game.Environment;
 using CarOrama.Game.Input;
 using CarOrama.Game.Sensors;
+using CarOrama.Game.Simulation;
 using CarOrama.Game.UI;
 using CarOrama.Game.Validation;
 using CarOrama.Game.Vehicle;
@@ -24,18 +27,29 @@ public partial class Main : Node3D
     private VehicleCameraMonitor? _vehicleCameraMonitor;
     private Transform3D _vehicleSpawnTransform;
     private IVehicleCommandSource? _commandSourceOverride;
+    private BufferedVehicleCommandSource? _episodeCommandSource;
+    private readonly VehicleSpecification _vehicleSpecification = new();
+    private CameraSensorLayout _cameraSensorLayout = CameraSensorLayout.CreateModel3Inspired();
     private bool _cameraMonitorEnabled;
 
     public override async void _Ready()
     {
         InputBindings.EnsureConfigured();
         var smokeTest = HasArgument("--smoke-test");
-        if (smokeTest)
+        var episodeSmokeTest = HasArgument("--episode-smoke-test");
+        var datasetSmokeTest = HasArgument("--dataset-smoke-test");
+        var recordDataset = HasArgument("--record-dataset");
+        if (episodeSmokeTest || datasetSmokeTest || recordDataset)
+        {
+            _episodeCommandSource = new BufferedVehicleCommandSource();
+            _commandSourceOverride = _episodeCommandSource;
+        }
+        else if (smokeTest)
         {
             _commandSourceOverride = new ScriptedVehicleCommandSource();
         }
 
-        _cameraMonitorEnabled = !smokeTest &&
+        _cameraMonitorEnabled = !smokeTest && !episodeSmokeTest && !datasetSmokeTest && !recordDataset &&
             !HasArgument("--traffic-control-preview") &&
             !HasArgument("--traffic-signal-preview") &&
             !HasArgument("--corner-preview") &&
@@ -62,7 +76,19 @@ public partial class Main : Node3D
             AddIntersectionPreviewCamera();
         }
 
-        if (smokeTest)
+        if (recordDataset)
+        {
+            await RunDatasetRecordingAsync();
+        }
+        else if (datasetSmokeTest)
+        {
+            await RunDatasetSmokeTestAsync();
+        }
+        else if (episodeSmokeTest)
+        {
+            await RunEpisodeSmokeTestAsync();
+        }
+        else if (smokeTest)
         {
             await RunSmokeTestAsync();
         }
@@ -140,7 +166,7 @@ public partial class Main : Node3D
             new Vector3((float)spawn.Position.X, 1.15f, (float)spawn.Position.Y));
 
         var commandSource = _commandSourceOverride ?? new ManualVehicleCommandSource();
-        _vehicle = new ElectricVehicle(new VehicleSpecification(), commandSource);
+        _vehicle = new ElectricVehicle(_vehicleSpecification, commandSource);
         AddChild(_vehicle);
         _vehicle.SetResetTransform(_vehicleSpawnTransform);
         if (_roadWorld?.TrafficSignals is not null)
@@ -168,7 +194,7 @@ public partial class Main : Node3D
 
         if (_vehicleCameraRig is null)
         {
-            _vehicleCameraRig = new VehicleCameraRig(CameraSensorLayout.CreateModel3Inspired());
+            _vehicleCameraRig = new VehicleCameraRig(_cameraSensorLayout);
             AddChild(_vehicleCameraRig);
         }
 
@@ -430,6 +456,243 @@ public partial class Main : Node3D
 
         GD.Print("SMOKE TEST PASSED: structured road world and electric drivetrain created and validated.");
         GetTree().Quit(0);
+    }
+
+    private async Task RunEpisodeSmokeTestAsync()
+    {
+        if (_roadWorld is null || _vehicle is null || _episodeCommandSource is null)
+        {
+            GD.PushError("Episode smoke test failed: world, vehicle, or buffered command source is missing.");
+            GetTree().Quit(1);
+            return;
+        }
+
+        var spawn = _roadWorld.Network.SpawnPoints[0];
+        var route = DrivingRoute.Create("godot-episode-smoke-route", _roadWorld.Network, [spawn.LaneId]);
+        var scenario = SimulationScenario.Create(
+            "godot-episode-smoke",
+            physicsTicksPerSecond: Engine.PhysicsTicksPerSecond,
+            controlTicksPerSecond: 20,
+            maximumControlTicks: 40);
+        var resetRequest = EpisodeResetRequest.Create(
+            scenario,
+            _roadWorld.Network.Seed,
+            route.Id,
+            spawn.Id);
+        var environment = new GodotDrivingEnvironment(
+            _roadWorld,
+            _vehicle,
+            route,
+            _episodeCommandSource,
+            _vehicleSpecification);
+        AddChild(environment);
+        var initial = await environment.ResetAsync(resetRequest);
+        EpisodeStepResult? result = null;
+        while (result is null || !result.IsTerminal)
+        {
+            var action = DrivingAction.Create(
+                result?.ControlTick ?? initial.ControlTick,
+                steering: 0.0,
+                longitudinalAccelerationMetersPerSecondSquared: 1.5);
+            result = await environment.StepAsync(action);
+        }
+
+        var position = _vehicle.GlobalPosition;
+        var finite = float.IsFinite(position.X) && float.IsFinite(position.Y) && float.IsFinite(position.Z);
+        var valid = finite &&
+            result.IsTruncated &&
+            result.Termination.Reason == EpisodeTerminationReason.ControlTickLimitReached &&
+            result.ControlTick == scenario.MaximumControlTicks &&
+            result.Observation.PhysicsTick == scenario.MaximumControlTicks * scenario.PhysicsTicksPerControlTick &&
+            result.Observation.Route.DistanceTravelledMeters > initial.Route.DistanceTravelledMeters &&
+            result.Observation.EgoVehicle.SpeedMetersPerSecond > 0.5 &&
+            environment.IsPausedBetweenSteps;
+        if (!valid)
+        {
+            GD.PushError(
+                $"Episode smoke test failed: finite={finite}, termination={result.Termination}, " +
+                $"controlTick={result.ControlTick}, physicsTick={result.Observation.PhysicsTick}, " +
+                $"progress={result.Observation.Route.DistanceTravelledMeters:F2}, " +
+                $"speed={result.Observation.EgoVehicle.SpeedMetersPerSecond:F2}, " +
+                $"collisions={result.Metrics.CollisionCount}, paused={environment.IsPausedBetweenSteps}.");
+            GetTree().Paused = false;
+            GetTree().Quit(1);
+            return;
+        }
+
+        GD.Print(
+            $"EPISODE SMOKE TEST PASSED: {result.ControlTick} control ticks, " +
+            $"{result.Observation.PhysicsTick} physics ticks, paused between actions.");
+        GetTree().Paused = false;
+        GetTree().Quit(0);
+    }
+
+    private async Task RunDatasetSmokeTestAsync()
+    {
+        if (_roadWorld is null || _vehicle is null || _episodeCommandSource is null)
+        {
+            GD.PushError("Dataset smoke test failed: simulation components are missing.");
+            GetTree().Quit(1);
+            return;
+        }
+
+        var outputRoot = Path.Combine(Path.GetTempPath(), $"carorama-dataset-smoke-{Guid.NewGuid():N}");
+        var succeeded = false;
+        try
+        {
+            var spawn = _roadWorld.Network.SpawnPoints[0];
+            var route = DrivingRoute.Create("dataset-smoke-route", _roadWorld.Network, [spawn.LaneId]);
+            var scenario = SimulationScenario.Create(
+                "dataset-smoke",
+                physicsTicksPerSecond: Engine.PhysicsTicksPerSecond,
+                controlTicksPerSecond: 20,
+                maximumControlTicks: 4);
+            var manifestEntry = new ScenarioManifestEntry(
+                scenario.ScenarioId,
+                DatasetSplit.Test,
+                _roadWorld.Network.Seed,
+                route.Id,
+                spawn.Id,
+                route.LaneIds[^1],
+                route.LaneIds,
+                scenario.PhysicsTicksPerSecond,
+                scenario.ControlTicksPerSecond,
+                scenario.MaximumControlTicks);
+            var manifest = new ScenarioManifest(
+                ScenarioManifest.CurrentSchemaVersion,
+                SimulationContract.CurrentVersion,
+                [manifestEntry]);
+            var layout = CameraSensorLayout.CreateModel3Inspired(
+                imageWidthPixels: 64,
+                imageHeightPixels: 36,
+                captureFrequencyHertz: 20.0);
+            var captureRig = new VehicleCameraRig(layout) { Target = _vehicle };
+            AddChild(captureRig);
+            var writer = new EpisodeDatasetWriter(
+                outputRoot,
+                "godot-jolt-smoke",
+                "validation",
+                manifest,
+                DateTimeOffset.UnixEpoch);
+            using var episode = writer.BeginEpisode(scenario.ScenarioId, layout.Cameras);
+            var environment = new GodotDrivingEnvironment(
+                _roadWorld,
+                _vehicle,
+                route,
+                _episodeCommandSource,
+                _vehicleSpecification);
+            AddChild(environment);
+            var reset = await environment.ResetAsync(EpisodeResetRequest.Create(
+                scenario,
+                _roadWorld.Network.Seed,
+                route.Id,
+                spawn.Id));
+            episode.WriteReset(reset);
+            var scheduler = new CameraCaptureScheduler(layout, scenario.PhysicsTicksPerSecond);
+            EpisodeStepResult? result = null;
+            while (result is null || !result.IsTerminal)
+            {
+                var action = DrivingAction.Create(result?.ControlTick ?? reset.ControlTick, 0.0, 1.0);
+                var frames = new List<SensorFrameReference>();
+                result = await environment.StepAsync(action, async (physicsTick, simulationTimeSeconds) =>
+                {
+                    var due = scheduler.Advance(physicsTick);
+                    if (due.Count > 0)
+                    {
+                        frames.AddRange(await captureRig.CaptureAsync(
+                            episode.EpisodeDirectory,
+                            due,
+                            physicsTick,
+                            simulationTimeSeconds));
+                    }
+                });
+                episode.WriteStep(action, result, frames);
+            }
+
+            var summary = episode.Complete();
+            writer.CompleteDataset();
+            var expectedFrameCount = layout.Cameras.Count * (int)scenario.MaximumControlTicks;
+            var completeMarker = Path.Combine(episode.EpisodeDirectory, "_COMPLETE");
+            var stepStream = Path.Combine(episode.EpisodeDirectory, "steps.jsonl");
+            var temporaryStream = stepStream + ".tmp";
+            var pngCount = Directory.EnumerateFiles(
+                Path.Combine(episode.EpisodeDirectory, "frames"),
+                "*.png",
+                SearchOption.AllDirectories).Count();
+            if (!result.IsTruncated ||
+                summary.RecordedSensorFrameCount != expectedFrameCount ||
+                pngCount != expectedFrameCount ||
+                !File.Exists(completeMarker) ||
+                !File.Exists(Path.Combine(writer.DatasetDirectory, "_COMPLETE")) ||
+                !File.Exists(stepStream) ||
+                File.Exists(temporaryStream))
+            {
+                throw new InvalidOperationException(
+                    $"Invalid completed dataset: termination={result.Termination}, " +
+                    $"indexed={summary.RecordedSensorFrameCount}, png={pngCount}, expected={expectedFrameCount}.");
+            }
+
+            succeeded = true;
+            GD.Print(
+                $"DATASET SMOKE TEST PASSED: {summary.RecordedStepCount} steps, " +
+                $"{summary.RecordedSensorFrameCount} synchronized frames, crash-safe completion.");
+            GetTree().Paused = false;
+            GetTree().Quit(0);
+        }
+        catch (Exception exception)
+        {
+            GD.PushError($"Dataset smoke test failed: {exception}\nArtifacts: {outputRoot}");
+            GetTree().Paused = false;
+            GetTree().Quit(1);
+        }
+        finally
+        {
+            if (succeeded && Directory.Exists(outputRoot))
+            {
+                Directory.Delete(outputRoot, recursive: true);
+            }
+        }
+    }
+
+    private async Task RunDatasetRecordingAsync()
+    {
+        try
+        {
+            var recorder = new GodotDatasetRecorder(_episodeCommandSource!, _vehicleSpecification, this);
+            AddChild(recorder);
+            var exitCode = await recorder.RecordAsync(OS.GetCmdlineUserArgs(), PrepareRecordingWorldAsync);
+            GetTree().Paused = false;
+            GetTree().Quit(exitCode);
+        }
+        catch (Exception exception)
+        {
+            GD.PushError($"Dataset recording failed: {exception}");
+            GetTree().Paused = false;
+            GetTree().Quit(1);
+        }
+    }
+
+    private async Task<GodotRecordingWorld> PrepareRecordingWorldAsync(
+        long seed,
+        CameraSensorLayout layout)
+    {
+        if (!ReferenceEquals(_cameraSensorLayout, layout))
+        {
+            _cameraSensorLayout = layout;
+            if (_vehicleCameraRig is not null)
+            {
+                _vehicleCameraRig.QueueFree();
+                _vehicleCameraRig = null;
+            }
+        }
+
+        _seed = seed;
+        BuildWorld();
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        return new GodotRecordingWorld(
+            _roadWorld ?? throw new InvalidOperationException("Road world rebuild failed."),
+            _vehicle ?? throw new InvalidOperationException("Vehicle rebuild failed."),
+            _vehicleCameraRig ?? throw new InvalidOperationException("Camera rig rebuild failed."));
     }
 
     private static long ReadSeed()

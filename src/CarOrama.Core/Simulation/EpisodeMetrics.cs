@@ -11,7 +11,9 @@ public sealed record EpisodeMetrics
         int redLightViolationCount,
         int stopSignViolationCount,
         double energyConsumedWattHours,
-        double meanAbsoluteJerkMetersPerSecondCubed)
+        double meanAbsoluteJerkMetersPerSecondCubed,
+        double speedingDurationSeconds,
+        double laneDepartureDurationSeconds)
     {
         ContractVersion = SimulationContract.CurrentVersion;
         ElapsedSimulationSeconds = elapsedSimulationSeconds;
@@ -23,6 +25,8 @@ public sealed record EpisodeMetrics
         StopSignViolationCount = stopSignViolationCount;
         EnergyConsumedWattHours = energyConsumedWattHours;
         MeanAbsoluteJerkMetersPerSecondCubed = meanAbsoluteJerkMetersPerSecondCubed;
+        SpeedingDurationSeconds = speedingDurationSeconds;
+        LaneDepartureDurationSeconds = laneDepartureDurationSeconds;
     }
 
     public int ContractVersion { get; }
@@ -45,6 +49,10 @@ public sealed record EpisodeMetrics
 
     public double MeanAbsoluteJerkMetersPerSecondCubed { get; }
 
+    public double SpeedingDurationSeconds { get; }
+
+    public double LaneDepartureDurationSeconds { get; }
+
     public static EpisodeMetrics Create(
         double elapsedSimulationSeconds,
         double distanceTravelledMeters,
@@ -54,7 +62,9 @@ public sealed record EpisodeMetrics
         int redLightViolationCount,
         int stopSignViolationCount,
         double energyConsumedWattHours,
-        double meanAbsoluteJerkMetersPerSecondCubed)
+        double meanAbsoluteJerkMetersPerSecondCubed,
+        double speedingDurationSeconds = 0.0,
+        double laneDepartureDurationSeconds = 0.0)
     {
         SimulationContractValidation.RequireNonNegative(
             elapsedSimulationSeconds,
@@ -88,7 +98,13 @@ public sealed record EpisodeMetrics
                 nameof(energyConsumedWattHours)),
             SimulationContractValidation.RequireNonNegative(
                 meanAbsoluteJerkMetersPerSecondCubed,
-                nameof(meanAbsoluteJerkMetersPerSecondCubed)));
+                nameof(meanAbsoluteJerkMetersPerSecondCubed)),
+            SimulationContractValidation.RequireNonNegative(
+                speedingDurationSeconds,
+                nameof(speedingDurationSeconds)),
+            SimulationContractValidation.RequireNonNegative(
+                laneDepartureDurationSeconds,
+                nameof(laneDepartureDurationSeconds)));
     }
 
     private static void RequireNonNegativeCount(int value, string parameterName)

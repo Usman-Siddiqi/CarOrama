@@ -1,3 +1,4 @@
+using CarOrama.Core.Data;
 using CarOrama.Core.Sensors;
 using Godot;
 
@@ -15,6 +16,7 @@ public partial class VehicleCameraRig : Node
     private Node3D? _target;
     private CameraSensorId? _previewChannel;
     private bool _allChannelsEnabled;
+    private bool _captureInProgress;
 
     public VehicleCameraRig(CameraSensorLayout layout)
     {
@@ -95,6 +97,92 @@ public partial class VehicleCameraRig : Node
     public Texture2D GetTexture(CameraSensorId id) => RequireChannel(id).Viewport.GetTexture();
 
     public CameraSensorSpecification GetSpecification(CameraSensorId id) => RequireChannel(id).Specification;
+
+    /// <summary>
+    /// Renders and atomically saves a set of channels while the caller holds the
+    /// simulation at a known physics tick.
+    /// </summary>
+    public async Task<IReadOnlyList<SensorFrameReference>> CaptureAsync(
+        string episodeDirectory,
+        IReadOnlyCollection<CameraSensorId> cameraIds,
+        long physicsTick,
+        double simulationTimeSeconds)
+    {
+        if (_captureInProgress)
+        {
+            throw new InvalidOperationException("A camera capture is already in progress.");
+        }
+
+        if (string.IsNullOrWhiteSpace(episodeDirectory))
+        {
+            throw new ArgumentException("An episode directory is required.", nameof(episodeDirectory));
+        }
+
+        if (physicsTick < 0 || !double.IsFinite(simulationTimeSeconds) || simulationTimeSeconds < 0.0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(physicsTick));
+        }
+
+        ArgumentNullException.ThrowIfNull(cameraIds);
+        var requested = cameraIds.Distinct().Order().ToArray();
+        if (requested.Length == 0)
+        {
+            return [];
+        }
+
+        _captureInProgress = true;
+        try
+        {
+            UpdateCameraTransforms();
+            foreach (var id in requested)
+            {
+                RequireChannel(id).Viewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Once;
+            }
+
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            var frames = new List<SensorFrameReference>(requested.Length);
+            foreach (var id in requested)
+            {
+                var channel = RequireChannel(id);
+                using var image = channel.Viewport.GetTexture().GetImage();
+                if (image.IsEmpty() ||
+                    image.GetWidth() != channel.Specification.ImageWidthPixels ||
+                    image.GetHeight() != channel.Specification.ImageHeightPixels)
+                {
+                    throw new InvalidOperationException($"Camera '{id}' did not produce its calibrated image dimensions.");
+                }
+
+                var channelDirectory = id.ToString().ToLowerInvariant();
+                var relativePath = $"frames/{channelDirectory}/{physicsTick:D10}.png";
+                var absolutePath = Path.Combine(
+                    Path.GetFullPath(episodeDirectory),
+                    "frames",
+                    channelDirectory,
+                    $"{physicsTick:D10}.png");
+                if (File.Exists(absolutePath))
+                {
+                    throw new IOException($"A sensor frame already exists at '{absolutePath}'.");
+                }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
+                var temporaryPath = absolutePath + ".tmp";
+                var error = image.SavePng(temporaryPath);
+                if (error != Error.Ok)
+                {
+                    throw new IOException($"Godot failed to save '{absolutePath}' ({error}).");
+                }
+
+                File.Move(temporaryPath, absolutePath);
+                frames.Add(new SensorFrameReference(id, physicsTick, simulationTimeSeconds, relativePath));
+            }
+
+            return frames;
+        }
+        finally
+        {
+            _captureInProgress = false;
+        }
+    }
 
     public override void _PhysicsProcess(double delta)
     {

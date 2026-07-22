@@ -33,9 +33,8 @@ public sealed class RoadGroundTruthQueryTests
         var second = _network.GetLane(first.SuccessorLaneIds[0]);
         var route = DrivingRoute.Create("two-lane-route", _network, [first.Id, second.Id]);
         var laneLength = PolylineLength(first.CenterLine) + PolylineLength(second.CenterLine);
-        var connectorLength = Vector2D.Distance(first.CenterLine[^1], second.CenterLine[0]);
 
-        Assert.Equal(laneLength + connectorLength, route.TotalLengthMeters, precision: 9);
+        Assert.True(route.TotalLengthMeters > laneLength);
         Assert.True(Vector2D.Distance(first.CenterLine[0], route.GetPointAtDistance(0.0)) < 1e-9);
         Assert.True(Vector2D.Distance(
             second.CenterLine[^1],
@@ -83,6 +82,42 @@ public sealed class RoadGroundTruthQueryTests
                 ? ObservedTrafficControlState.StopRequired
                 : ObservedTrafficControlState.Green,
             observation.UpcomingTrafficControl.State);
+    }
+
+    [Fact]
+    public void IntersectionConflictAreaDoesNotUseSingleLaneDepartureRules()
+    {
+        var intersection = _network.Intersections.First(candidate => candidate.IncomingLaneIds.Count >= 2);
+        var incoming = _network.GetLane(intersection.IncomingLaneIds[0]);
+        var outgoingId = incoming.SuccessorLaneIds.First();
+        var route = DrivingRoute.Create("intersection-route", _network, [incoming.Id, outgoingId]);
+        var heading = Math.Atan2(incoming.Direction.Y, incoming.Direction.X);
+
+        var observation = new RoadGroundTruthQuery(_network, route).Observe(
+            intersection.Position,
+            heading);
+
+        Assert.False(observation.IsLaneDeparture);
+        Assert.False(observation.IsOutsideDrivableArea);
+        Assert.False(observation.IsWrongWay);
+    }
+
+    [Fact]
+    public void ProjectionCannotJumpBeyondAReachableForwardWindow()
+    {
+        var first = _network.Lanes.First(lane => lane.SuccessorLaneIds.Count > 0);
+        var second = _network.GetLane(first.SuccessorLaneIds[0]);
+        var route = DrivingRoute.Create("bounded-projection", _network, [first.Id, second.Id]);
+        var query = new RoadGroundTruthQuery(_network, route);
+        var farFuturePosition = second.CenterLine[^1];
+
+        var observation = query.Observe(
+            farFuturePosition,
+            Math.Atan2(first.Direction.Y, first.Direction.X),
+            minimumProgressMeters: 0.0,
+            maximumProgressMeters: 10.0);
+
+        Assert.Equal(10.0, observation.ProgressMeters, precision: 9);
     }
 
     private static double PolylineLength(IReadOnlyList<Vector2D> points)

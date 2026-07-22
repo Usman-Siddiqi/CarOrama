@@ -73,7 +73,7 @@ while (true)
 }
 ```
 
-This reference loop intentionally uses deterministic planar motion. A Godot environment adapter must advance the Jolt rigid body asynchronously over the same configured tick schedule and populate collision/contact metrics without changing these controller-facing semantics.
+This reference loop intentionally uses deterministic planar motion. `GodotDrivingEnvironment` advances the Jolt rigid body asynchronously over the same configured tick schedule, remains paused between actions, and can pause after individual physics ticks for synchronized sensor capture without changing controller-facing semantics.
 
 The protocol should support:
 
@@ -88,4 +88,4 @@ The protocol should support:
 
 ## Data and assets
 
-Large maps, recordings, trained weights, and generated datasets should not be committed directly to Git. Define a versioned manifest and storage policy before adding them. Source assets need documented provenance and compatible licenses.
+Large maps, recordings, trained weights, and generated datasets must not be committed directly to Git. Recordings use the versioned immutable layout documented in `docs/dataset-format.md` and belong under the ignored `artifacts/` directory or external object storage. Source assets need documented provenance and compatible licenses.

@@ -6,6 +6,7 @@ namespace CarOrama.Game.Environment;
 
 public sealed class RoadSceneBuilder
 {
+    private const double IntersectionCurbReturnSetbackMeters = 2.5;
     private const float MarkingElevation = 0.081f;
     private const float StopLineElevation = 0.083f;
 
@@ -79,7 +80,8 @@ public sealed class RoadSceneBuilder
             new Vector3(width, 0.5f, depth),
             new Transform3D(Basis.Identity, new Vector3(0.0f, -0.31f, 0.0f)),
             _grass,
-            collision: true));
+            collision: true,
+            collisionGroup: "drivable_surface"));
     }
 
     private void AddRoadSegment(
@@ -239,6 +241,7 @@ public sealed class RoadSceneBuilder
         Node3D roads,
         Node3D sidewalks)
     {
+        var node = network.GetNode(intersection.NodeId);
         var widestRoad = intersection.IncomingLaneIds
             .Select(network.GetLane)
             .Select(lane => network.GetSegment(lane.SegmentId).WidthMeters)
@@ -252,7 +255,7 @@ public sealed class RoadSceneBuilder
             return;
         }
 
-        var size = (float)(widestRoad + 0.08);
+        var size = (float)(GetIntersectionCutoutHalfWidth(network, node) * 2.0);
         roads.AddChild(PrimitiveFactory.Box(
             $"intersection:{intersection.NodeId}",
             new Vector3(size, 0.13f, size),
@@ -439,9 +442,12 @@ public sealed class RoadSceneBuilder
         int ySign,
         double cutoutHalfWidth)
     {
-        var horizontalSidewalkOffset = (horizontalSegment.WidthMeters * 0.5) +
+        // Set the physical corner back from the conflict area. A square pad at
+        // the ordinary road edge leaves enough lane width for a point mass but
+        // clips a real vehicle's swept body during a legal right turn.
+        var horizontalSidewalkOffset = cutoutHalfWidth +
             (horizontalSegment.SidewalkWidthMeters * 0.5) + 0.22;
-        var verticalSidewalkOffset = (verticalSegment.WidthMeters * 0.5) +
+        var verticalSidewalkOffset = cutoutHalfWidth +
             (verticalSegment.SidewalkWidthMeters * 0.5) + 0.22;
         var horizontalEndpoint = intersection.Position + new Vector2D(
             xSign * cutoutHalfWidth,
@@ -478,8 +484,8 @@ public sealed class RoadSceneBuilder
             xSign * ((verticalSegment.WidthMeters * 0.5) + 0.12),
             ySign * cutoutHalfWidth);
         var horizontalCurbCorner = intersection.Position + new Vector2D(
-            xSign * ((verticalSegment.WidthMeters * 0.5) + 0.12),
-            ySign * ((horizontalSegment.WidthMeters * 0.5) + 0.12));
+            xSign * cutoutHalfWidth,
+            ySign * cutoutHalfWidth);
         AddCurbRun(
             sidewalks,
             $"curb-corner-x:{intersection.NodeId}:{xSign}:{ySign}",
@@ -1098,7 +1104,7 @@ public sealed class RoadSceneBuilder
             .Select(network.GetSegment)
             .Select(segment => segment.WidthMeters * 0.5)
             .DefaultIfEmpty(0.0)
-            .Max() + 0.04;
+            .Max() + IntersectionCurbReturnSetbackMeters;
     }
 
     private static double GetLongitudinalMarkingTrim(

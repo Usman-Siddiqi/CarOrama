@@ -22,12 +22,18 @@ internal static class PrimitiveFactory
         Transform3D transform,
         Material material,
         bool collision = false,
-        bool castShadow = true)
+        bool castShadow = true,
+        string? collisionGroup = null)
     {
         Node3D root;
         if (collision)
         {
             var body = new StaticBody3D { Name = name };
+            if (!string.IsNullOrWhiteSpace(collisionGroup))
+            {
+                body.AddToGroup(collisionGroup);
+            }
+
             body.AddChild(new CollisionShape3D
             {
                 Name = "Collision",

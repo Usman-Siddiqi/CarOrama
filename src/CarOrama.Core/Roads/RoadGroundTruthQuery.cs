@@ -35,7 +35,8 @@ public sealed class RoadGroundTruthQuery
         double headingRadians,
         double minimumProgressMeters = 0.0,
         double lookaheadDistanceMeters = DefaultLookaheadMeters,
-        Func<TrafficControl, ObservedTrafficControlState>? signalStateResolver = null)
+        Func<TrafficControl, ObservedTrafficControlState>? signalStateResolver = null,
+        double maximumProgressMeters = double.PositiveInfinity)
     {
         if (!double.IsFinite(headingRadians))
         {
@@ -47,7 +48,7 @@ public sealed class RoadGroundTruthQuery
             throw new ArgumentOutOfRangeException(nameof(lookaheadDistanceMeters));
         }
 
-        var projection = _route.Project(worldPosition, minimumProgressMeters);
+        var projection = _route.Project(worldPosition, minimumProgressMeters, maximumProgressMeters);
         var lane = _network.GetLane(projection.Segment.LaneId);
         var lateralOffset = Vector2D.Dot(
             worldPosition - projection.Point,
@@ -58,6 +59,7 @@ public sealed class RoadGroundTruthQuery
         var actualLookahead = Math.Min(lookaheadDistanceMeters, remainingDistance);
         var lookaheadPoint = _route.GetPointAtDistance(projection.ProgressMeters + actualLookahead);
         var halfLaneWidth = lane.WidthMeters * 0.5;
+        var insideIntersection = IsInsideIntersectionDrivableArea(worldPosition);
 
         return new RoadGroundTruthSnapshot(
             LaneReferenceObservation.Create(
@@ -77,9 +79,38 @@ public sealed class RoadGroundTruthQuery
             FindUpcomingTrafficControl(projection.ProgressMeters, signalStateResolver),
             projection.ProgressMeters,
             projection.DistanceMeters,
-            !projection.Segment.IsIntersectionConnector && Math.Abs(lateralOffset) > halfLaneWidth,
-            Math.Abs(lateralOffset) > halfLaneWidth + DrivableAreaMarginMeters,
-            Math.Abs(headingError) > Math.PI * 0.5);
+            !insideIntersection &&
+                !projection.Segment.IsIntersectionConnector &&
+                Math.Abs(lateralOffset) > halfLaneWidth,
+            !insideIntersection && Math.Abs(lateralOffset) > halfLaneWidth + DrivableAreaMarginMeters,
+            !insideIntersection &&
+                !projection.Segment.IsIntersectionConnector &&
+                Math.Abs(headingError) > Math.PI * 0.5);
+    }
+
+    private bool IsInsideIntersectionDrivableArea(Vector2D worldPosition)
+    {
+        foreach (var intersection in _network.Intersections)
+        {
+            var incidentLaneIds = intersection.IncomingLaneIds.Concat(intersection.OutgoingLaneIds);
+            var radius = incidentLaneIds
+                .Select(_network.GetLane)
+                .Select(lane =>
+                {
+                    var endpoint = lane.EndNodeId == intersection.NodeId
+                        ? lane.CenterLine[^1]
+                        : lane.CenterLine[0];
+                    return Vector2D.Distance(endpoint, intersection.Position) + (lane.WidthMeters * 0.5);
+                })
+                .DefaultIfEmpty(0.0)
+                .Max();
+            if (Vector2D.Distance(worldPosition, intersection.Position) <= radius)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private UpcomingTrafficControlObservation FindUpcomingTrafficControl(

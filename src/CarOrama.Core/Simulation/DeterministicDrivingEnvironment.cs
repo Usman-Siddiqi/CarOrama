@@ -14,11 +14,13 @@ public sealed class DeterministicDrivingEnvironment : ISimulationEnvironment
 {
     private const double RouteCompletionToleranceMeters = 0.5;
     private const double ProgressProjectionBacktrackMeters = 2.0;
-    private const double ReferenceLookaheadMeters = 8.0;
+    private const double ProgressProjectionForwardWindowMeters = 20.0;
+    private const double ReferenceLookaheadMeters = 4.0;
     private readonly RoadNetwork _network;
     private readonly DrivingRoute _route;
     private readonly VehicleSpecification _vehicleSpecification;
     private readonly RoadGroundTruthQuery _groundTruthQuery;
+    private readonly RoadRuleMetricsMonitor _ruleMetrics;
     private readonly LongitudinalCommandAllocator _commandAllocator;
     private LongitudinalVehicleModel? _vehicle;
     private PrivilegedObservation? _observation;
@@ -31,8 +33,6 @@ public sealed class DeterministicDrivingEnvironment : ISimulationEnvironment
     private double _previousControlAcceleration;
     private double _absoluteJerkSum;
     private int _jerkSampleCount;
-    private int _laneDepartureCount;
-    private bool _wasLaneDeparture;
     private long _controlTick;
     private long _physicsTick;
 
@@ -46,6 +46,7 @@ public sealed class DeterministicDrivingEnvironment : ISimulationEnvironment
         _vehicleSpecification = vehicleSpecification ?? new VehicleSpecification();
         _vehicleSpecification.Validate();
         _groundTruthQuery = new RoadGroundTruthQuery(network, route);
+        _ruleMetrics = new RoadRuleMetricsMonitor(network, route);
         _commandAllocator = new LongitudinalCommandAllocator(_vehicleSpecification);
     }
 
@@ -85,8 +86,6 @@ public sealed class DeterministicDrivingEnvironment : ISimulationEnvironment
         _previousControlAcceleration = 0.0;
         _absoluteJerkSum = 0.0;
         _jerkSampleCount = 0;
-        _laneDepartureCount = 0;
-        _wasLaneDeparture = false;
         _controlTick = request.InitialControlTick;
         _physicsTick = request.InitialPhysicsTick;
         _termination = EpisodeTermination.Ongoing;
@@ -96,7 +95,7 @@ public sealed class DeterministicDrivingEnvironment : ISimulationEnvironment
             _headingRadians,
             lookaheadDistanceMeters: ReferenceLookaheadMeters);
         _routeProgressMeters = groundTruth.ProgressMeters;
-        _wasLaneDeparture = groundTruth.IsLaneDeparture;
+        _ruleMetrics.Reset(groundTruth.ProgressMeters, groundTruth.IsLaneDeparture);
         _observation = CreateObservation(groundTruth);
         return _observation;
     }
@@ -150,14 +149,15 @@ public sealed class DeterministicDrivingEnvironment : ISimulationEnvironment
             _position,
             _headingRadians,
             Math.Max(0.0, _routeProgressMeters - ProgressProjectionBacktrackMeters),
-            ReferenceLookaheadMeters);
+            ReferenceLookaheadMeters,
+            maximumProgressMeters: _routeProgressMeters + ProgressProjectionForwardWindowMeters);
         _routeProgressMeters = groundTruth.ProgressMeters;
-        if (groundTruth.IsLaneDeparture && !_wasLaneDeparture)
-        {
-            _laneDepartureCount++;
-        }
-
-        _wasLaneDeparture = groundTruth.IsLaneDeparture;
+        _ruleMetrics.Update(
+            groundTruth.ProgressMeters,
+            vehicle.State.SpeedMetersPerSecond,
+            groundTruth.Lane.SpeedLimitMetersPerSecond,
+            groundTruth.IsLaneDeparture,
+            scenario.FixedControlDeltaSeconds);
         var jerk = Math.Abs(
             (vehicle.State.AccelerationMetersPerSecondSquared - _previousControlAcceleration) /
             scenario.FixedControlDeltaSeconds);
@@ -206,11 +206,13 @@ public sealed class DeterministicDrivingEnvironment : ISimulationEnvironment
             vehicle.State.DistanceMeters,
             _route.TotalLengthMeters <= 1e-9 ? 0.0 : groundTruth.ProgressMeters / _route.TotalLengthMeters,
             collisionCount: 0,
-            _laneDepartureCount,
-            redLightViolationCount: 0,
-            stopSignViolationCount: 0,
+            _ruleMetrics.LaneDepartureCount,
+            _ruleMetrics.RedLightViolationCount,
+            _ruleMetrics.StopSignViolationCount,
             consumedWattHours,
-            _jerkSampleCount == 0 ? 0.0 : _absoluteJerkSum / _jerkSampleCount);
+            _jerkSampleCount == 0 ? 0.0 : _absoluteJerkSum / _jerkSampleCount,
+            _ruleMetrics.SpeedingDurationSeconds,
+            _ruleMetrics.LaneDepartureDurationSeconds);
     }
 
     private EpisodeTermination DetermineTermination(
