@@ -59,7 +59,7 @@ Each directed lane stores:
 - the containing road-segment ID;
 - a stop-line ID when applicable.
 
-Intersections store approaches, controls, and positions. Spawn points reference a directed lane and heading. Routes are graph searches over lane successors, so the same information used to draw roads is usable by navigation and evaluation code.
+Intersections store approaches, controls, and positions. A traffic control belongs to one road approach and references every incoming lane it governs; its visual sign or signal is placed once beyond the outer-right road edge. Spawn points reference a directed lane and heading. Routes are graph searches over lane successors, so the same information used to draw roads is usable by navigation and evaluation code.
 
 The current topology is intentionally simple. Future generators can implement suburbs, arterials, roundabouts, ramps, grades, and OpenDRIVE import behind `IRoadNetworkGenerator` without changing consumers.
 

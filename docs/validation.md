@@ -16,6 +16,7 @@ The core suite checks:
 - different seeds vary optional topology while retaining connectivity;
 - local and arterial segments expose balanced lane counts, matching widths, and deterministic classification;
 - every directed lane has valid boundaries, direction, segment, and successor references;
+- each controlled approach has one control covering all of its incoming lanes;
 - routes contain connected lanes and spawns reference valid lanes;
 - motor output obeys torque, power, speed, and gear limits;
 - regenerative braking cannot charge above battery/motor acceptance limits;
@@ -42,7 +43,7 @@ For at least seeds `7`, `42`, and `2026`:
 1. Confirm every road has a yellow centre treatment and white edge lines.
 2. Confirm arterial roads have multiple lanes per direction, dashed white lane dividers, and aligned arrows.
 3. Confirm stop bars and zebra crossings remain outside the intersection conflict area, including local-to-arterial junctions.
-4. Confirm stop signs and traffic lights face their approaches.
+4. Confirm each approach has one stop sign or traffic signal beyond its outer-right curb, facing incoming traffic.
 5. Drive a full loop with keyboard and controller.
 6. Confirm steering self-stabilizes, suspension settles, and the chassis collides with curbs/scenery.
 7. Confirm headlights, tail lamps, brake lamps, both indicators, side repeaters, and hazards respond to their controls.

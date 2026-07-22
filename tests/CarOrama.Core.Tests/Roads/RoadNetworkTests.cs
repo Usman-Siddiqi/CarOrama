@@ -192,10 +192,45 @@ public sealed class RoadNetworkTests
         Assert.NotEmpty(network.TrafficControls);
         foreach (var control in network.TrafficControls)
         {
-            var lane = network.GetLane(control.IncomingLaneId);
-            Assert.NotNull(lane.StopLineId);
-            Assert.Contains(network.StopLines, line => line.Id == lane.StopLineId);
+            Assert.NotEmpty(control.IncomingLaneIds);
+            var lanes = control.IncomingLaneIds.Select(network.GetLane).ToArray();
+            Assert.All(lanes, lane => Assert.Equal(control.ApproachSegmentId, lane.SegmentId));
+            Assert.All(lanes, lane => Assert.Equal(control.IntersectionNodeId, lane.EndNodeId));
+            Assert.All(lanes, lane => Assert.NotNull(lane.StopLineId));
+            Assert.All(lanes, lane => Assert.Contains(network.StopLines, line => line.Id == lane.StopLineId));
             Assert.Contains(control.State, new[] { "Stop", "Green" });
+
+            var segment = network.GetSegment(control.ApproachSegmentId);
+            var intersection = network.GetNode(control.IntersectionNodeId);
+            var right = control.FacingDirection.PerpendicularLeft() * -1.0;
+            var lateralOffset = Vector2D.Dot(control.Position - intersection.Position, right);
+            Assert.True(
+                lateralOffset > segment.WidthMeters * 0.5,
+                $"Control {control.Id} is not beyond the outer-right road edge.");
+        }
+
+        foreach (var intersection in network.Intersections.Where(candidate => candidate.TrafficControlIds.Count > 0))
+        {
+            var controls = intersection.TrafficControlIds
+                .Select(id => network.TrafficControls.Single(control => control.Id == id))
+                .ToArray();
+            var expectedApproaches = intersection.IncomingLaneIds
+                .Select(network.GetLane)
+                .Select(lane => lane.SegmentId)
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+            var actualApproaches = controls
+                .Select(control => control.ApproachSegmentId)
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+            var representedLanes = controls
+                .SelectMany(control => control.IncomingLaneIds)
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+
+            Assert.Equal(expectedApproaches, actualApproaches);
+            Assert.Equal(intersection.IncomingLaneIds.Order(StringComparer.Ordinal), representedLanes);
         }
     }
 }

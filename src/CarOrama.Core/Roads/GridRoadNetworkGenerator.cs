@@ -5,6 +5,9 @@ namespace CarOrama.Core.Roads;
 
 public sealed class GridRoadNetworkGenerator : IRoadNetworkGenerator
 {
+    private const double TrafficControlLongitudinalClearanceMeters = 0.9;
+    private const double TrafficControlRoadEdgeClearanceMeters = 0.75;
+
     private readonly record struct GridPoint(int X, int Y)
     {
         public string NodeId => $"node:{X}:{Y}";
@@ -385,18 +388,38 @@ public sealed class GridRoadNetworkGenerator : IRoadNetworkGenerator
                 var halfWidth = approach.Direction.PerpendicularLeft() * (approach.WidthMeters * 0.5);
                 stopLines.Add(new StopLine(stopLineId, approach.Id, node.Id, endpoint + halfWidth, endpoint - halfWidth));
                 stopLineByLane.Add(approach.Id, stopLineId);
+            }
 
-                var controlId = $"control:{approach.Id}";
-                var controlPosition = endpoint - (approach.Direction * 1.5) - (halfWidth * 1.45);
-                controls.Add(new TrafficControl(
-                    controlId,
-                    node.Id,
-                    approach.Id,
-                    trafficLight ? TrafficControlKind.TrafficLight : TrafficControlKind.StopSign,
-                    controlPosition,
-                    approach.Direction,
-                    trafficLight ? "Green" : "Stop"));
-                controlIds.Add(controlId);
+            if (controlled)
+            {
+                foreach (var approachGroup in incoming
+                    .GroupBy(lane => lane.SegmentId, StringComparer.Ordinal)
+                    .OrderBy(group => group.Key, StringComparer.Ordinal))
+                {
+                    var approachLanes = approachGroup.OrderBy(lane => lane.Id, StringComparer.Ordinal).ToArray();
+                    var representative = approachLanes[0];
+                    var direction = representative.Direction;
+                    var endpoint = representative.CenterLine[^1];
+                    var longitudinalInset = Vector2D.Dot(node.Position - endpoint, direction);
+                    var roadCenterAtStopLine = node.Position - (direction * longitudinalInset);
+                    var roadHalfWidth = approachLanes.Length * representative.WidthMeters;
+                    var right = direction.PerpendicularLeft() * -1.0;
+                    var controlPosition =
+                        roadCenterAtStopLine - (direction * TrafficControlLongitudinalClearanceMeters) +
+                        (right * (roadHalfWidth + TrafficControlRoadEdgeClearanceMeters));
+                    var controlId = $"control:{node.Id}:{approachGroup.Key}";
+                    var incomingLaneIds = approachLanes.Select(lane => lane.Id).ToArray();
+                    controls.Add(new TrafficControl(
+                        controlId,
+                        node.Id,
+                        approachGroup.Key,
+                        incomingLaneIds,
+                        trafficLight ? TrafficControlKind.TrafficLight : TrafficControlKind.StopSign,
+                        controlPosition,
+                        direction,
+                        trafficLight ? "Green" : "Stop"));
+                    controlIds.Add(controlId);
+                }
             }
 
             intersections.Add(new Intersection(

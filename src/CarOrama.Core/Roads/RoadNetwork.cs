@@ -65,7 +65,8 @@ public sealed record StopLine(
 public sealed record TrafficControl(
     string Id,
     string IntersectionNodeId,
-    string IncomingLaneId,
+    string ApproachSegmentId,
+    IReadOnlyList<string> IncomingLaneIds,
     TrafficControlKind Kind,
     Vector2D Position,
     Vector2D FacingDirection,

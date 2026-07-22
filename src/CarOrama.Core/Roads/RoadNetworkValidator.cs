@@ -25,6 +25,7 @@ public static class RoadNetworkValidator
         var segmentIds = network.Segments.Select(segment => segment.Id).ToHashSet(StringComparer.Ordinal);
         var laneIds = network.Lanes.Select(lane => lane.Id).ToHashSet(StringComparer.Ordinal);
         var stopLineIds = network.StopLines.Select(line => line.Id).ToHashSet(StringComparer.Ordinal);
+        var controlIds = network.TrafficControls.Select(control => control.Id).ToHashSet(StringComparer.Ordinal);
 
         foreach (var segment in network.Segments)
         {
@@ -115,9 +116,47 @@ public static class RoadNetworkValidator
 
         foreach (var control in network.TrafficControls)
         {
-            Require(laneIds.Contains(control.IncomingLaneId), $"Control {control.Id} references an unknown lane.", errors);
             Require(nodeIds.Contains(control.IntersectionNodeId), $"Control {control.Id} references an unknown intersection.", errors);
+            Require(segmentIds.Contains(control.ApproachSegmentId), $"Control {control.Id} references an unknown segment.", errors);
+            Require(control.IncomingLaneIds.Count > 0, $"Control {control.Id} has no incoming lanes.", errors);
+            Require(
+                control.IncomingLaneIds.Distinct(StringComparer.Ordinal).Count() == control.IncomingLaneIds.Count,
+                $"Control {control.Id} repeats an incoming lane.",
+                errors);
+            Require(Math.Abs(control.FacingDirection.Length - 1.0) < 1e-6, $"Control {control.Id} has an invalid heading.", errors);
             Require(control.Kind != TrafficControlKind.None, $"Control {control.Id} has no behavior.", errors);
+
+            foreach (var laneId in control.IncomingLaneIds)
+            {
+                Require(laneIds.Contains(laneId), $"Control {control.Id} references unknown lane {laneId}.", errors);
+                if (network.TryGetLane(laneId, out var lane))
+                {
+                    Require(lane.SegmentId == control.ApproachSegmentId, $"Control {control.Id} spans multiple approaches.", errors);
+                    Require(lane.EndNodeId == control.IntersectionNodeId, $"Control {control.Id} references an outgoing lane.", errors);
+                }
+            }
+        }
+
+        foreach (var intersection in network.Intersections)
+        {
+            foreach (var controlId in intersection.TrafficControlIds)
+            {
+                Require(controlIds.Contains(controlId), $"Intersection {intersection.NodeId} references unknown control {controlId}.", errors);
+            }
+
+            if (intersection.TrafficControlIds.Count > 0)
+            {
+                var representedLaneIds = network.TrafficControls
+                    .Where(control => intersection.TrafficControlIds.Contains(control.Id, StringComparer.Ordinal))
+                    .SelectMany(control => control.IncomingLaneIds)
+                    .ToArray();
+                var representedLaneSet = representedLaneIds.ToHashSet(StringComparer.Ordinal);
+                Require(
+                    representedLaneSet.SetEquals(intersection.IncomingLaneIds) &&
+                    representedLaneIds.Length == representedLaneSet.Count,
+                    $"Intersection {intersection.NodeId} controls do not cover every incoming lane exactly once.",
+                    errors);
+            }
         }
 
         foreach (var spawn in network.SpawnPoints)
