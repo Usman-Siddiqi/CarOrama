@@ -7,7 +7,7 @@ CarOrama is a long-term autonomous-driving simulation project. The current miles
 - Seeded, connected road graphs with local streets and multi-lane arterials, right-hand directed lanes, boundaries, centre lines, speed limits, stop lines, traffic controls, routes, and spawn points.
 - Runtime-built roads with yellow centre treatments, white lane dividers and edge lines, stop bars, zebra crossings, directional arrows, concrete curbs, sidewalks, signs, actuated traffic signals, and lightweight roadside scenery.
 - Vehicle-responsive traffic lights with lane-level approach detection, minimum/maximum green timing, passage-gap extension, yellow transition, and an all-red clearance interval.
-- A rigid-body electric vehicle with a single-speed motor model, configurable driven axles, regenerative and friction braking, ray-cast suspension, tire forces, collision handling, battery state of charge, exterior lighting, a follow camera, and an independently switchable eight-camera exterior rig with a live engineering monitor.
+- A rigid-body electric vehicle with a single-speed motor model, configurable driven axles, regenerative and friction braking, ray-cast suspension, tire forces, collision handling, battery state of charge, exterior lighting, a follow camera, an independently switchable eight-camera exterior rig, a live single-camera HUD monitor, and a separate native 2x4 all-camera monitor window.
 - Separate motion and exterior-light command boundaries that keep keyboard/controller input replaceable by future driving controllers.
 - A versioned reset/observe/step protocol with exact control/physics ticks, deterministic route ground truth, cumulative metrics, and terminal/truncation semantics.
 - A faster-than-real-time reference environment using the EV drivetrain, a bicycle motion model, regenerative/friction brake allocation, and a non-learning route-following baseline.
@@ -84,10 +84,11 @@ Controls:
 | Hazard lights | X | D-pad down |
 | Headlights | H | D-pad up |
 | Cycle monitored vehicle camera | C | Right shoulder button |
+| Toggle eight-camera monitor window | G | - |
 | Reset vehicle | R | Start |
 | New deterministic seed | N | North face button |
 
-The current seed and compact vehicle telemetry are shown on screen. The default seed can also be changed in `project.godot` or with `-- --seed 12345`.
+The manual simulator opens a separate, resizable **Eight-Camera Monitor** window with all eight live feeds in a 2x4 grid. Snap it beside the main simulator window for a split-screen view; press **G** to hide/show it. Press **C** to cycle the compact monitor in the main window. The current seed and compact vehicle telemetry are shown on screen. The default seed can also be changed in `project.godot` or with `-- --seed 12345`.
 
 ## Test and validate
 

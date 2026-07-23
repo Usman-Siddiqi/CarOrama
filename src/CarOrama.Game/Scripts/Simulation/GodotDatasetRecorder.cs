@@ -63,6 +63,7 @@ public sealed partial class GodotDatasetRecorder : Node
         }
 
         var captureCameras = !arguments.Contains("--no-cameras");
+        var livePreview = arguments.Contains("--live-preview");
         if (captureCameras && IsHeadlessDisplay())
         {
             throw new InvalidOperationException(
@@ -86,6 +87,7 @@ public sealed partial class GodotDatasetRecorder : Node
             RequireOption(options, "build-id"),
             manifest);
         var qualityFailures = 0;
+        var enableRecoveryPerturbations = arguments.Contains("--recovery-perturbations");
         foreach (var definition in selectedScenarios)
         {
             GetTree().Paused = false;
@@ -103,7 +105,13 @@ public sealed partial class GodotDatasetRecorder : Node
                 _commandSource,
                 _vehicleSpecification);
             _episodeHost.AddChild(environment);
-            var controller = CreateReferenceController();
+            var controller = CreateReferenceController(definition);
+            var recoverySchedule = enableRecoveryPerturbations && definition.Split == DatasetSplit.Training
+                ? new RecoveryPerturbationSchedule(
+                    definition.ControlTicksPerSecond,
+                    StableDriverSeed(definition.Seed, definition.ScenarioId))
+                : null;
+            var perturbationTicks = 0;
             using var episode = writer.BeginEpisode(
                 definition.ScenarioId,
                 captureCameras ? layout.Cameras : null);
@@ -113,38 +121,67 @@ public sealed partial class GodotDatasetRecorder : Node
                 definition.RouteId,
                 definition.SpawnPointId));
             episode.WriteReset(observation);
-            var scheduler = captureCameras
-                ? new CameraCaptureScheduler(layout, scenario.PhysicsTicksPerSecond)
-                : null;
+            if (livePreview)
+            {
+                GetTree().Paused = false;
+            }
+            var cameraLayout = captureCameras ? layout : null;
+            if (cameraLayout is not null)
+            {
+                ValidateControlAlignedCameraRates(cameraLayout, scenario.ControlTicksPerSecond);
+            }
             EpisodeStepResult result;
             do
             {
-                var action = controller.GetAction(observation);
-                var frames = new List<SensorFrameReference>();
-                if (scheduler is null)
+                var teacherAction = controller.GetAction(observation, route);
+                var perturbation = recoverySchedule?.Apply(observation, teacherAction) ??
+                    new RecoveryPerturbationDecision(teacherAction, false, false);
+                var action = perturbation.ExecutedAction;
+                if (perturbation.IsPerturbation)
                 {
-                    result = await environment.StepAsync(action);
-                }
-                else
-                {
-                    result = await environment.StepAsync(action, async (physicsTick, simulationTimeSeconds) =>
-                    {
-                        var due = scheduler.Advance(physicsTick);
-                        if (due.Count > 0)
-                        {
-                            frames.AddRange(await world.CameraRig.CaptureAsync(
-                                episode.EpisodeDirectory,
-                                due,
-                                physicsTick,
-                                simulationTimeSeconds));
-                        }
-                    });
+                    perturbationTicks++;
                 }
 
+                var lightingCommand = controller.GetLightingCommand(observation, route);
+                var frames = new List<SensorFrameReference>();
+                if (cameraLayout is not null)
+                {
+                    // Capture while the environment is paused at the exact
+                    // observation used to choose this action. Disturbance ticks
+                    // intentionally have no frames; the following teacher ticks
+                    // become supervised recovery examples.
+                    var due = CamerasDueAtControlTick(
+                        cameraLayout,
+                        scenario.ControlTicksPerSecond,
+                        observation.ControlTick);
+                    if (due.Count > 0 && !perturbation.SuppressSensorFrames)
+                    {
+                        frames.AddRange(await world.CameraRig.CaptureAsync(
+                            episode.EpisodeDirectory,
+                            due,
+                            observation.PhysicsTick,
+                            observation.PhysicsTick / (double)scenario.PhysicsTicksPerSecond));
+                    }
+                }
+
+                result = await environment.StepAsync(action, lightingCommand: lightingCommand);
                 episode.WriteStep(action, result, frames);
                 observation = result.Observation;
+                if (livePreview && !result.IsTerminal)
+                {
+                    GetTree().Paused = false;
+                    await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                }
             }
             while (!result.IsTerminal);
+
+            // The preview can remain open after recording, so replace the final
+            // driving command with a brake hold before releasing the environment.
+            _commandSource.Set(VehicleCommand.Create(
+                steering: 0.0,
+                throttle: 0.0,
+                regenerativeBrake: 0.0,
+                frictionBrake: 1.0));
 
             episode.Complete();
             var passed = IsQualityEpisode(result);
@@ -157,7 +194,7 @@ public sealed partial class GodotDatasetRecorder : Node
                 $"{definition.ScenarioId}: {result.Termination.Reason}, " +
                 $"completion={result.Metrics.RouteCompletionFraction:P1}, " +
                 $"steps={result.ControlTick}, frames={(captureCameras ? "recorded" : "disabled")}, " +
-                $"quality={(passed ? "PASS" : "FAIL")}");
+                $"recoveryPerturbationTicks={perturbationTicks}, quality={(passed ? "PASS" : "FAIL")}");
             GetTree().Paused = false;
             environment.QueueFree();
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -170,16 +207,65 @@ public sealed partial class GodotDatasetRecorder : Node
         return qualityFailures == 0 ? 0 : 3;
     }
 
-    private PrivilegedRouteFollower CreateReferenceController() => new(
+    private static void ValidateControlAlignedCameraRates(
+        CameraSensorLayout layout,
+        int controlTicksPerSecond)
+    {
+        foreach (var camera in layout.Cameras)
+        {
+            var interval = controlTicksPerSecond / camera.CaptureFrequencyHertz;
+            if (camera.CaptureFrequencyHertz > controlTicksPerSecond ||
+                Math.Abs(interval - Math.Round(interval)) > 1e-9)
+            {
+                throw new ArgumentException(
+                    $"Camera '{camera.Id}' frequency {camera.CaptureFrequencyHertz} Hz must divide " +
+                    $"the {controlTicksPerSecond} Hz control rate for action-aligned imitation data.");
+            }
+        }
+    }
+
+    private static IReadOnlyList<CameraSensorId> CamerasDueAtControlTick(
+        CameraSensorLayout layout,
+        int controlTicksPerSecond,
+        long controlTick) => layout.Cameras
+            .Where(camera => controlTick % (long)Math.Round(
+                controlTicksPerSecond / camera.CaptureFrequencyHertz) == 0)
+            .Select(camera => camera.Id)
+            .ToArray();
+
+    private PrivilegedRouteFollower CreateReferenceController(ScenarioManifestEntry definition) => new(
         _vehicleSpecification,
         new PrivilegedRouteFollowerConfig
         {
-            MaximumCruiseSpeedMetersPerSecond = 9.5,
-            ComfortableDecelerationMetersPerSecondSquared = 4.5,
-            MaximumCorneringAccelerationMetersPerSecondSquared = 0.8,
-            CrossTrackGain = 1.6,
-            HeadingErrorGain = 0.8,
+            MaximumCruiseSpeedMetersPerSecond = 16.3,
+            MaximumAccelerationMetersPerSecondSquared = 2.0,
+            MaximumCombinedAccelerationG = 0.32,
+            SpeedLimitMarginMetersPerSecond = 0.4,
+            CruiseSpeedVariationMetersPerSecond = 0.75,
+            DriverProfileSeed = StableDriverSeed(definition.Seed, definition.ScenarioId),
+            ComfortableDecelerationMetersPerSecondSquared = 3.0,
+            TargetStoppingDecelerationMetersPerSecondSquared = 2.8,
+            MaximumCorneringAccelerationMetersPerSecondSquared = 1.25,
+            MaximumLongitudinalJerkMetersPerSecondCubed = 4.0,
+            CrossTrackGain = 2.2,
+            HeadingErrorGain = 1.4,
+            StopLineBufferMeters = 2.2,
         });
+
+    private static long StableDriverSeed(long scenarioSeed, string scenarioId)
+    {
+        unchecked
+        {
+            var hash = 14695981039346656037UL ^ (ulong)scenarioSeed;
+            foreach (var character in scenarioId)
+            {
+                hash ^= character;
+                hash *= 1099511628211UL;
+            }
+
+            return (long)hash;
+        }
+    }
 
     private static IEnumerable<ScenarioManifestEntry> SelectScenarios(
         ScenarioManifest manifest,

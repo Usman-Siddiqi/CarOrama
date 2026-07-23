@@ -18,13 +18,13 @@ public sealed record RoadNetworkConfig
 
     public double SidewalkWidthMeters { get; init; } = 2.4;
 
-    public double IntersectionApproachSetbackMeters { get; init; } = 4.2;
+    public double IntersectionApproachSetbackMeters { get; init; } = 6.5;
 
     public double OptionalConnectionProbability { get; init; } = 0.42;
 
-    public double ArterialSpeedLimitMetersPerSecond { get; init; } = 13.89;
+    public double ArterialSpeedLimitMetersPerSecond { get; init; } = 16.67;
 
-    public double LocalSpeedLimitMetersPerSecond { get; init; } = 11.11;
+    public double LocalSpeedLimitMetersPerSecond { get; init; } = 13.89;
 
     public void Validate()
     {

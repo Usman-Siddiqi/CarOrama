@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "trainingSeeds": [10001, 10037, 10069, 10103, 10141, 10177, 10211, 10247],
+  "validationSeeds": [20011, 20047, 20089],
+  "testSeeds": [30011, 30047],
+  "routesPerSeed": 2,
+  "physicsTicksPerSecond": 120,
+  "controlTicksPerSecond": 20,
+  "maximumControlTicks": 4000
+}

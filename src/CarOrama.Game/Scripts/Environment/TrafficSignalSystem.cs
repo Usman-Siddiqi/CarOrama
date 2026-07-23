@@ -6,9 +6,21 @@ namespace CarOrama.Game.Environment;
 
 public sealed partial class TrafficSignalSystem : Node
 {
-    private const double DetectorRangeMeters = 34.0;
+    private const double DetectorRangeMeters = 55.0;
     private const double DetectorDownstreamToleranceMeters = 3.0;
     private const double DetectorLateralMarginMeters = 0.9;
+
+    // The default core timing is intentionally generic for unit tests. The game uses a
+    // longer, protected cycle so a vehicle approaching a red has enough time to stop.
+    private static readonly TrafficSignalTiming SimulationTiming = new()
+    {
+        MinimumGreenSeconds = 18.0,
+        MaximumGreenSeconds = 45.0,
+        PassageGapSeconds = 5.0,
+        YellowSeconds = 4.5,
+        AllRedSeconds = 2.0,
+        MinimumRedSeconds = 8.0,
+    };
 
     private readonly RoadNetwork _network;
     private readonly IReadOnlyDictionary<string, TrafficSignalHead> _heads;
@@ -95,7 +107,10 @@ public sealed partial class TrafficSignalSystem : Node
                     ? TrafficSignalPhase.Horizontal
                     : TrafficSignalPhase.Vertical,
                 StringComparer.Ordinal);
-            var controller = new ActuatedTrafficSignalController(phases);
+            var controller = new ActuatedTrafficSignalController(
+                phases,
+                SimulationTiming,
+                initialPhase: GetDeterministicInitialPhase(intersection.NodeId));
             _controllers.Add(
                 intersection.NodeId,
                 new IntersectionController(controller, signalControls.Select(control => control.Id).ToArray()));
@@ -130,6 +145,21 @@ public sealed partial class TrafficSignalSystem : Node
                 longitudinalDistance <= DetectorRangeMeters &&
                 lateralDistance <= detector.HalfWidthMeters;
         });
+    }
+
+    private static TrafficSignalPhase GetDeterministicInitialPhase(string intersectionId)
+    {
+        // Stable FNV-1a parity gives different intersections different resting
+        // phases without relying on randomized string hash codes.
+        var hash = 2_166_136_261u;
+        foreach (var character in intersectionId)
+        {
+            hash = (hash ^ character) * 16_777_619u;
+        }
+
+        return (hash & 1u) == 0u
+            ? TrafficSignalPhase.Horizontal
+            : TrafficSignalPhase.Vertical;
     }
 
     private void ApplyAllStates()

@@ -7,6 +7,8 @@ namespace CarOrama.Game.Environment;
 public sealed class RoadSceneBuilder
 {
     private const double IntersectionCurbReturnSetbackMeters = 2.5;
+    private const double CornerSweptPathClearanceMeters = 1.2;
+    private const double RoadEdgeShoulderMeters = 0.65;
     private const float MarkingElevation = 0.081f;
     private const float StopLineElevation = 0.083f;
 
@@ -95,6 +97,7 @@ public sealed class RoadSceneBuilder
         var direction = (segment.CenterLine[^1] - segment.CenterLine[0]).Normalized();
         var left = direction.PerpendicularLeft();
         var roadEdge = segment.WidthMeters * 0.5;
+        var roadSurfaceEdge = roadEdge + RoadEdgeShoulderMeters;
         var startTrim = GetIntersectionCutoutHalfWidth(network, network.GetNode(segment.StartNodeId));
         var endTrim = GetIntersectionCutoutHalfWidth(network, network.GetNode(segment.EndNodeId));
         var trimmedStart = segment.CenterLine[0] + (direction * startTrim);
@@ -104,7 +107,7 @@ public sealed class RoadSceneBuilder
         var roadEnd = ToWorld(trimmedEnd);
         roads.AddChild(PrimitiveFactory.Box(
             segment.Id,
-            new Vector3((float)segment.WidthMeters, 0.12f, (float)trimmedLength),
+            new Vector3((float)(roadSurfaceEdge * 2.0), 0.12f, (float)trimmedLength),
             PrimitiveFactory.OrientedBoxTransform(roadStart, roadEnd, 0.0f),
             _asphalt));
 
@@ -142,7 +145,7 @@ public sealed class RoadSceneBuilder
             MarkingElevation,
             _white);
 
-        var sidewalkOffset = roadEdge + (segment.SidewalkWidthMeters * 0.5) + 0.22;
+        var sidewalkOffset = roadSurfaceEdge + (segment.SidewalkWidthMeters * 0.5) + 0.22;
         foreach (var side in new[] { -1.0, 1.0 })
         {
             var offset = left * (sidewalkOffset * side);
@@ -155,7 +158,7 @@ public sealed class RoadSceneBuilder
                 _sidewalk,
                 collision: true));
 
-            var curbOffset = left * ((roadEdge + 0.12) * side);
+            var curbOffset = left * ((roadSurfaceEdge + 0.12) * side);
             var curbStart = ToWorld(trimmedStart + curbOffset);
             var curbEnd = ToWorld(trimmedEnd + curbOffset);
             sidewalks.AddChild(PrimitiveFactory.Box(
@@ -166,7 +169,7 @@ public sealed class RoadSceneBuilder
                 collision: true));
         }
 
-        AddRoadsideTrees(segment, scenery, direction, left, roadEdge + segment.SidewalkWidthMeters + 2.2);
+        AddRoadsideTrees(segment, scenery, direction, left, roadSurfaceEdge + segment.SidewalkWidthMeters + 2.2);
     }
 
     private void AddCenterTreatment(
@@ -291,12 +294,14 @@ public sealed class RoadSceneBuilder
             cutoutHalfWidth);
         var firstEdge = CreateOffsetPolyline(
             centerPath,
-            segments[0].WidthMeters * -0.5,
-            segments[1].WidthMeters * -0.5);
+            -((segments[0].WidthMeters * 0.5) + RoadEdgeShoulderMeters),
+            -((segments[1].WidthMeters * 0.5) + RoadEdgeShoulderMeters),
+            CornerSweptPathClearanceMeters);
         var secondEdge = CreateOffsetPolyline(
             centerPath,
-            segments[0].WidthMeters * 0.5,
-            segments[1].WidthMeters * 0.5);
+            (segments[0].WidthMeters * 0.5) + RoadEdgeShoulderMeters,
+            (segments[1].WidthMeters * 0.5) + RoadEdgeShoulderMeters,
+            CornerSweptPathClearanceMeters);
         roads.AddChild(PrimitiveFactory.Ribbon(
             $"intersection-corner:{intersection.NodeId}",
             firstEdge.Select(ToWorld).ToArray(),
@@ -404,16 +409,19 @@ public sealed class RoadSceneBuilder
         {
             var curbPath = CreateOffsetPolyline(
                 centerPath,
-                side * ((segments[0].WidthMeters * 0.5) + 0.12),
-                side * ((segments[1].WidthMeters * 0.5) + 0.12));
+                side * ((segments[0].WidthMeters * 0.5) + RoadEdgeShoulderMeters + 0.12),
+                side * ((segments[1].WidthMeters * 0.5) + RoadEdgeShoulderMeters + 0.12),
+                CornerSweptPathClearanceMeters);
             var sidewalkInnerPath = CreateOffsetPolyline(
                 centerPath,
-                side * ((segments[0].WidthMeters * 0.5) + 0.22),
-                side * ((segments[1].WidthMeters * 0.5) + 0.22));
+                side * ((segments[0].WidthMeters * 0.5) + RoadEdgeShoulderMeters + 0.22),
+                side * ((segments[1].WidthMeters * 0.5) + RoadEdgeShoulderMeters + 0.22),
+                CornerSweptPathClearanceMeters);
             var sidewalkOuterPath = CreateOffsetPolyline(
                 centerPath,
-                side * ((segments[0].WidthMeters * 0.5) + segments[0].SidewalkWidthMeters + 0.22),
-                side * ((segments[1].WidthMeters * 0.5) + segments[1].SidewalkWidthMeters + 0.22));
+                side * ((segments[0].WidthMeters * 0.5) + RoadEdgeShoulderMeters + segments[0].SidewalkWidthMeters + 0.22),
+                side * ((segments[1].WidthMeters * 0.5) + RoadEdgeShoulderMeters + segments[1].SidewalkWidthMeters + 0.22),
+                CornerSweptPathClearanceMeters);
 
             sidewalks.AddChild(PrimitiveFactory.Ribbon(
                 $"sidewalk-corner-curve:{intersection.NodeId}:{side}",
@@ -799,16 +807,16 @@ public sealed class RoadSceneBuilder
             markings,
             $"corner-edge-left:{intersection.NodeId}",
             centerPath,
-            segments[0].WidthMeters * 0.5,
-            segments[1].WidthMeters * 0.5,
+            (segments[0].WidthMeters * 0.5) + RoadEdgeShoulderMeters,
+            (segments[1].WidthMeters * 0.5) + RoadEdgeShoulderMeters,
             0.12f,
             _white);
         AddOffsetPolylineLine(
             markings,
             $"corner-edge-right:{intersection.NodeId}",
             centerPath,
-            segments[0].WidthMeters * -0.5,
-            segments[1].WidthMeters * -0.5,
+            -((segments[0].WidthMeters * 0.5) + RoadEdgeShoulderMeters),
+            -((segments[1].WidthMeters * 0.5) + RoadEdgeShoulderMeters),
             0.12f,
             _white);
 
@@ -899,7 +907,8 @@ public sealed class RoadSceneBuilder
     private static IReadOnlyList<Vector2D> CreateOffsetPolyline(
         IReadOnlyList<Vector2D> centerPath,
         double startOffset,
-        double endOffset)
+        double endOffset,
+        double midpointExpansionMeters = 0.0)
     {
         var points = new Vector2D[centerPath.Count];
         for (var index = 0; index < centerPath.Count; index++)
@@ -927,6 +936,8 @@ public sealed class RoadSceneBuilder
             var left = tangent.Normalized().PerpendicularLeft();
             var amount = index / (double)(centerPath.Count - 1);
             var offset = startOffset + ((endOffset - startOffset) * amount);
+            var offsetDirection = Math.Sign(offset);
+            offset += offsetDirection * midpointExpansionMeters * Math.Sin(Math.PI * amount);
             points[index] = centerPath[index] + (left * offset);
         }
 

@@ -15,15 +15,22 @@ public enum TrafficSignalPhase
 
 public sealed record TrafficSignalTiming
 {
-    public double MinimumGreenSeconds { get; init; } = 6.0;
+    public double MinimumGreenSeconds { get; init; } = 10.0;
 
-    public double MaximumGreenSeconds { get; init; } = 24.0;
+    public double MaximumGreenSeconds { get; init; } = 30.0;
 
-    public double PassageGapSeconds { get; init; } = 2.5;
+    public double PassageGapSeconds { get; init; } = 4.0;
 
-    public double YellowSeconds { get; init; } = 3.5;
+    public double YellowSeconds { get; init; } = 4.0;
 
-    public double AllRedSeconds { get; init; } = 1.0;
+    public double AllRedSeconds { get; init; } = 1.5;
+
+    /// <summary>
+    /// Minimum length of the conflicting red interval before the next phase may turn green.
+    /// This can be longer than the all-red clearance when an environment wants to ensure
+    /// an approaching vehicle has time to react and stop.
+    /// </summary>
+    public double MinimumRedSeconds { get; init; } = 0.0;
 
     public void Validate()
     {
@@ -31,7 +38,8 @@ public sealed record TrafficSignalTiming
             MaximumGreenSeconds < MinimumGreenSeconds ||
             PassageGapSeconds < 0.0 ||
             YellowSeconds <= 0.0 ||
-            AllRedSeconds < 0.0)
+            AllRedSeconds < 0.0 ||
+            MinimumRedSeconds < 0.0)
         {
             throw new ArgumentOutOfRangeException(nameof(TrafficSignalTiming), "Signal timings must form a valid, non-negative sequence.");
         }
@@ -144,7 +152,7 @@ public sealed class ActuatedTrafficSignalController
         {
             TrafficSignalState.Green => GetGreenTransitionTimeSeconds(),
             TrafficSignalState.Yellow => Timing.YellowSeconds,
-            TrafficSignalState.Red => Timing.AllRedSeconds,
+            TrafficSignalState.Red => Math.Max(Timing.AllRedSeconds, Timing.MinimumRedSeconds),
             _ => throw new InvalidOperationException("Unknown traffic-signal state."),
         };
     }
@@ -166,12 +174,21 @@ public sealed class ActuatedTrafficSignalController
             return _stageElapsedSeconds;
         }
 
-        if (!HasDemand(CurrentPhase) && _secondsSinceCurrentPhaseDemand >= Timing.PassageGapSeconds)
+        if (!HasDemand(CurrentPhase))
         {
-            return _stageElapsedSeconds;
+            if (_secondsSinceCurrentPhaseDemand >= Timing.PassageGapSeconds)
+            {
+                return _stageElapsedSeconds;
+            }
+
+            // Schedule the exact remaining portion of the passage gap. Returning a
+            // full gap here can make the transition deadline pass without satisfying
+            // TryTransition, which would repeatedly evaluate a zero-length step.
+            return _stageElapsedSeconds +
+                (Timing.PassageGapSeconds - _secondsSinceCurrentPhaseDemand);
         }
 
-        return Math.Min(Timing.MaximumGreenSeconds, _stageElapsedSeconds + Timing.PassageGapSeconds);
+        return Timing.MaximumGreenSeconds;
     }
 
     private bool TryTransition()

@@ -20,7 +20,7 @@ public sealed partial class GodotDrivingEnvironment : Node
     private const double RouteCompletionToleranceMeters = 0.5;
     private const double ProjectionBacktrackMeters = 2.0;
     private const double ProjectionForwardWindowMeters = 20.0;
-    private const double LookaheadMeters = 2.0;
+    private const double LookaheadMeters = 6.5;
     private readonly RoadWorld _roadWorld;
     private readonly ElectricVehicle _vehicle;
     private readonly DrivingRoute _route;
@@ -29,10 +29,12 @@ public sealed partial class GodotDrivingEnvironment : Node
     private readonly RoadGroundTruthQuery _groundTruthQuery;
     private readonly RoadRuleMetricsMonitor _ruleMetrics;
     private readonly LongitudinalCommandAllocator _commandAllocator;
+    private readonly FuturePathVisualizer _futurePathVisualizer;
     private TaskCompletionSource? _physicsStepCompletion;
     private PrivilegedObservation? _observation;
     private EpisodeTermination _termination = EpisodeTermination.Ongoing;
     private int _remainingPhysicsTicks;
+    private bool _physicsPauseScheduled;
     private long _controlTick;
     private long _physicsTick;
     private double _routeProgressMeters;
@@ -61,8 +63,11 @@ public sealed partial class GodotDrivingEnvironment : Node
         _groundTruthQuery = new RoadGroundTruthQuery(roadWorld.Network, route);
         _ruleMetrics = new RoadRuleMetricsMonitor(roadWorld.Network, route);
         _commandAllocator = new LongitudinalCommandAllocator(vehicleSpecification);
+        _futurePathVisualizer = new FuturePathVisualizer { Route = _route, Target = _vehicle };
+        AddChild(_futurePathVisualizer);
         Name = "GodotDrivingEnvironment";
         ProcessMode = ProcessModeEnum.Always;
+        _vehicle.PhysicsIntegrated += OnVehiclePhysicsIntegrated;
     }
 
     public SimulationScenario? ActiveScenario { get; private set; }
@@ -116,6 +121,7 @@ public sealed partial class GodotDrivingEnvironment : Node
         _previousHeading = GetHeadingRadians();
         var groundTruth = ObserveGroundTruth();
         _routeProgressMeters = groundTruth.ProgressMeters;
+        _futurePathVisualizer.ProgressMeters = _routeProgressMeters;
         _ruleMetrics.Reset(groundTruth.ProgressMeters, groundTruth.IsLaneDeparture);
         _observation = CreateObservation(groundTruth, acceleration: 0.0, yawRate: 0.0);
         return Task.FromResult(_observation);
@@ -128,7 +134,8 @@ public sealed partial class GodotDrivingEnvironment : Node
 
     public async Task<EpisodeStepResult> StepAsync(
         DrivingAction action,
-        Func<long, double, Task>? pausedPhysicsTickObserver = null)
+        Func<long, double, Task>? pausedPhysicsTickObserver = null,
+        VehicleLightingCommand? lightingCommand = null)
     {
         var scenario = ActiveScenario ?? throw new InvalidOperationException("ResetAsync must be called before stepping.");
         if (_physicsStepCompletion is not null)
@@ -147,7 +154,7 @@ public sealed partial class GodotDrivingEnvironment : Node
         }
 
         var command = _commandAllocator.Allocate(action, _vehicle.SpeedMetersPerSecond, _vehicle.StateOfCharge);
-        _commandSource.Set(command);
+        _commandSource.Set(command, lightingCommand);
         _steering = action.Steering;
         var previousProgress = _routeProgressMeters;
         if (pausedPhysicsTickObserver is null)
@@ -182,6 +189,7 @@ public sealed partial class GodotDrivingEnvironment : Node
 
         var groundTruth = ObserveGroundTruth();
         _routeProgressMeters = groundTruth.ProgressMeters;
+        _futurePathVisualizer.ProgressMeters = _routeProgressMeters;
         _ruleMetrics.Update(
             groundTruth.ProgressMeters,
             speed,
@@ -196,9 +204,13 @@ public sealed partial class GodotDrivingEnvironment : Node
         return EpisodeStepResult.Create(_observation, reward, metrics, _termination);
     }
 
-    public override void _PhysicsProcess(double delta)
+    public override void _ExitTree()
     {
-        _ = delta;
+        _vehicle.PhysicsIntegrated -= OnVehiclePhysicsIntegrated;
+    }
+
+    private void OnVehiclePhysicsIntegrated()
+    {
         if (_physicsStepCompletion is null || _remainingPhysicsTicks <= 0)
         {
             return;
@@ -206,14 +218,24 @@ public sealed partial class GodotDrivingEnvironment : Node
 
         _remainingPhysicsTicks--;
         _physicsTick++;
-        if (_remainingPhysicsTicks > 0)
+        if (_remainingPhysicsTicks > 0 || _physicsPauseScheduled)
         {
             return;
         }
 
+        // Complete only after Jolt reports an integrated rigid-body step. The
+        // deferred pause runs after this server callback and before another tick.
+        _physicsPauseScheduled = true;
+        Callable.From(CompletePhysicsAdvance).CallDeferred();
+    }
+
+    private void CompletePhysicsAdvance()
+    {
         GetTree().Paused = true;
-        var completion = _physicsStepCompletion;
+        var completion = _physicsStepCompletion ??
+            throw new InvalidOperationException("The scheduled physics advance has no completion source.");
         _physicsStepCompletion = null;
+        _physicsPauseScheduled = false;
         completion.SetResult();
     }
 

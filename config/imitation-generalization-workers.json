@@ -1,0 +1,29 @@
+{
+  "cameras": [
+    "FrontBumper",
+    "WindshieldMain",
+    "WindshieldWide",
+    "DoorPillarLeft",
+    "DoorPillarRight",
+    "FenderLeft",
+    "FenderRight",
+    "Rear"
+  ],
+  "image_width": 320,
+  "image_height": 180,
+  "batch_size": 48,
+  "epochs": 40,
+  "learning_rate": 0.0001,
+  "weight_decay": 0.0001,
+  "steering_loss_weight": 2.0,
+  "acceleration_loss_weight": 1.0,
+  "steering_sample_weight": 4.0,
+  "braking_sample_weight": 1.5,
+  "num_workers": 0,
+  "loader_threads": 8,
+  "random_seed": 20260722,
+  "early_stopping_patience": 8,
+  "brightness_jitter": 0.2,
+  "contrast_jitter": 0.15,
+  "image_noise_standard_deviation": 0.01
+}

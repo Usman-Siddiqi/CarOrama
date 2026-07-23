@@ -125,4 +125,31 @@ public sealed class ActuatedTrafficSignalControllerTests
         controller.Step(Timing.MinimumGreenSeconds, []);
         Assert.Equal(TrafficSignalState.Green, controller.GetState("east"));
     }
+
+    [Fact]
+    public void CurrentAndCompetingDemandDoNotCreateAZeroLengthTransitionLoop()
+    {
+        var controller = new ActuatedTrafficSignalController(Phases, Timing);
+
+        controller.Step(6.0, ["east", "north"]);
+
+        Assert.Equal(TrafficSignalState.Green, controller.GetState("east"));
+        Assert.Equal(TrafficSignalState.Red, controller.GetState("north"));
+    }
+
+    [Fact]
+    public void MinimumRedHoldDelaysTheNextGreen()
+    {
+        var timing = Timing with { MinimumRedSeconds = 4.0 };
+        var controller = new ActuatedTrafficSignalController(Phases, timing);
+
+        controller.Step(5.0, ["north"]);
+        controller.Step(3.0, ["north"]);
+        Assert.Equal(TrafficSignalState.Red, controller.GetState("north"));
+
+        controller.Step(1.0, ["north"]);
+        Assert.Equal(TrafficSignalState.Red, controller.GetState("north"));
+        controller.Step(3.0, ["north"]);
+        Assert.Equal(TrafficSignalState.Green, controller.GetState("north"));
+    }
 }

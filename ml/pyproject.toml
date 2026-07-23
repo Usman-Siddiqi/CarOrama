@@ -1,0 +1,31 @@
+[project]
+name = "carorama-ml"
+version = "0.1.0"
+description = "Reproducible imitation-learning tools for CarOrama datasets"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "matplotlib>=3.10,<4",
+    "numpy>=2.2,<3",
+    "onnx>=1.18,<2",
+    "pillow>=11,<13",
+    "torch==2.11.0",
+]
+
+[project.scripts]
+carorama-train = "carorama_ml.train:main"
+carorama-evaluate = "carorama_ml.evaluate:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/carorama_ml"]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }

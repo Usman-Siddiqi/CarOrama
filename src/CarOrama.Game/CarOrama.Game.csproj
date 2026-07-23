@@ -8,5 +8,8 @@
   <ItemGroup>
     <ProjectReference Include="..\CarOrama.Core\CarOrama.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.23.2" />
+  </ItemGroup>
 </Project>
 

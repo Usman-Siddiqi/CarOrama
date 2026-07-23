@@ -14,6 +14,7 @@ internal static class InputBindings
     public const string HazardLights = "vehicle_hazard_lights";
     public const string Headlights = "vehicle_headlights";
     public const string CycleCamera = "vehicle_cycle_camera";
+    public const string ToggleCameraGrid = "vehicle_toggle_camera_grid";
     public const string Reset = "vehicle_reset";
     public const string NewSeed = "world_new_seed";
 
@@ -33,6 +34,7 @@ internal static class InputBindings
         AddKey(HazardLights, Key.X);
         AddKey(Headlights, Key.H);
         AddKey(CycleCamera, Key.C);
+        AddKey(ToggleCameraGrid, Key.G);
         AddKey(Reset, Key.R);
         AddKey(NewSeed, Key.N);
 

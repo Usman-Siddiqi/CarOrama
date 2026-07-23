@@ -9,10 +9,11 @@ param(
     [string]$Split,
     [string]$Scenario,
     [int]$MaxEpisodes,
+    [switch]$RecoveryPerturbations,
     [switch]$NoCameras,
     [int]$CameraWidth = 1280,
     [int]$CameraHeight = 720,
-    [double]$CameraHz = 30.0
+    [double]$CameraHz = 10.0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,6 +31,9 @@ $outputPath = if ([System.IO.Path]::IsPathRooted($Output)) {
 else {
     [System.IO.Path]::GetFullPath((Join-Path $repository $Output))
 }
+
+New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
+$logPath = Join-Path $outputPath 'godot.log'
 
 if ([string]::IsNullOrWhiteSpace($GodotExecutable)) {
     $godotCommand = Get-Command godot -ErrorAction SilentlyContinue
@@ -50,7 +54,7 @@ if ([string]::IsNullOrWhiteSpace($BuildId)) {
 & $GodotExecutable --headless --path $project --build-solutions --quit
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$engineArguments = @('--fixed-fps', '120', '--path', $project)
+$engineArguments = @('--log-file', $logPath, '--fixed-fps', '120', '--path', $project)
 if ($NoCameras) {
     $engineArguments = @('--headless') + $engineArguments
 }
@@ -69,6 +73,7 @@ $simulationArguments = @(
     '--camera-hz', $CameraHz.ToString([Globalization.CultureInfo]::InvariantCulture)
 )
 if ($NoCameras) { $simulationArguments += '--no-cameras' }
+if ($RecoveryPerturbations) { $simulationArguments += '--recovery-perturbations' }
 if ($Split) { $simulationArguments += @('--split', $Split) }
 if ($Scenario) { $simulationArguments += @('--scenario', $Scenario) }
 if ($MaxEpisodes -gt 0) { $simulationArguments += @('--max-episodes', $MaxEpisodes.ToString()) }

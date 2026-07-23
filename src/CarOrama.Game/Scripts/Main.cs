@@ -25,21 +25,59 @@ public partial class Main : Node3D
     private TelemetryHud? _hud;
     private VehicleCameraRig? _vehicleCameraRig;
     private VehicleCameraMonitor? _vehicleCameraMonitor;
+    private VehicleCameraArrayWindow? _vehicleCameraArrayWindow;
+    private FuturePathVisualizer? _futurePathVisualizer;
     private Transform3D _vehicleSpawnTransform;
     private IVehicleCommandSource? _commandSourceOverride;
     private BufferedVehicleCommandSource? _episodeCommandSource;
+    private TeacherPreviewKeepAlive? _teacherPreviewKeepAlive;
+    private OnnxVehiclePolicy? _onnxVehiclePolicy;
     private readonly VehicleSpecification _vehicleSpecification = new();
-    private CameraSensorLayout _cameraSensorLayout = CameraSensorLayout.CreateModel3Inspired();
+    private CameraSensorLayout _cameraSensorLayout = CameraSensorLayout.CreateModel3Inspired(
+        imageWidthPixels: 480,
+        imageHeightPixels: 270,
+        captureFrequencyHertz: 10.0);
     private bool _cameraMonitorEnabled;
 
     public override async void _Ready()
+    {
+        try
+        {
+            await InitializeAsync();
+        }
+        catch (Exception exception)
+        {
+            GD.PushError($"CarOrama startup failed: {exception}");
+            GetTree().Paused = false;
+            GetTree().Quit(1);
+        }
+    }
+
+    private async Task InitializeAsync()
     {
         InputBindings.EnsureConfigured();
         var smokeTest = HasArgument("--smoke-test");
         var episodeSmokeTest = HasArgument("--episode-smoke-test");
         var datasetSmokeTest = HasArgument("--dataset-smoke-test");
         var recordDataset = HasArgument("--record-dataset");
-        if (episodeSmokeTest || datasetSmokeTest || recordDataset)
+        var evaluatePolicy = HasArgument("--evaluate-policy");
+        var livePreview = HasArgument("--live-preview");
+        if (evaluatePolicy)
+        {
+            _onnxVehiclePolicy = new OnnxVehiclePolicy(
+                ResolveRepositoryPath(ReadRequiredArgument("--policy")),
+                ResolveRepositoryPath(ReadRequiredArgument("--policy-metadata")));
+            _cameraSensorLayout = CameraSensorLayout.CreateModel3Inspired(
+                _onnxVehiclePolicy.ImageWidth,
+                _onnxVehiclePolicy.ImageHeight,
+                captureFrequencyHertz: 20.0);
+        }
+        if (livePreview)
+        {
+            _teacherPreviewKeepAlive = new TeacherPreviewKeepAlive();
+            AddChild(_teacherPreviewKeepAlive);
+        }
+        if (episodeSmokeTest || datasetSmokeTest || recordDataset || evaluatePolicy)
         {
             _episodeCommandSource = new BufferedVehicleCommandSource();
             _commandSourceOverride = _episodeCommandSource;
@@ -49,11 +87,13 @@ public partial class Main : Node3D
             _commandSourceOverride = new ScriptedVehicleCommandSource();
         }
 
-        _cameraMonitorEnabled = !smokeTest && !episodeSmokeTest && !datasetSmokeTest && !recordDataset &&
+        _cameraMonitorEnabled = !smokeTest && !episodeSmokeTest && !datasetSmokeTest && !evaluatePolicy &&
+            (!recordDataset || livePreview) &&
             !HasArgument("--traffic-control-preview") &&
             !HasArgument("--traffic-signal-preview") &&
             !HasArgument("--corner-preview") &&
             !HasArgument("--intersection-preview") &&
+            !HasArgument("--no-camera-grid") &&
             !IsHeadlessDisplay();
 
         _seed = ReadSeed();
@@ -76,9 +116,20 @@ public partial class Main : Node3D
             AddIntersectionPreviewCamera();
         }
 
-        if (recordDataset)
+        if (evaluatePolicy)
         {
-            await RunDatasetRecordingAsync();
+            await RunPolicyEvaluationAsync();
+        }
+        else if (recordDataset)
+        {
+            if (livePreview)
+            {
+                CallDeferred(nameof(StartLivePreviewRecording));
+            }
+            else
+            {
+                await RunDatasetRecordingAsync();
+            }
         }
         else if (datasetSmokeTest)
         {
@@ -106,6 +157,12 @@ public partial class Main : Node3D
             _vehicle.QueueFree();
         }
 
+        if (_futurePathVisualizer is not null)
+        {
+            _futurePathVisualizer.QueueFree();
+            _futurePathVisualizer = null;
+        }
+
         var generator = new GridRoadNetworkGenerator();
         var network = generator.Generate(new RoadNetworkConfig { Seed = _seed });
         _roadWorld = new RoadSceneBuilder().Build(network);
@@ -117,6 +174,11 @@ public partial class Main : Node3D
     public override void _Process(double delta)
     {
         _ = delta;
+        if (Godot.Input.IsActionJustPressed(InputBindings.ToggleCameraGrid))
+        {
+            _vehicleCameraArrayWindow?.ToggleMonitor();
+        }
+
         if (Godot.Input.IsActionJustPressed(InputBindings.Reset))
         {
             _vehicle?.ResetVehicle();
@@ -183,6 +245,16 @@ public partial class Main : Node3D
 
         _followCamera.Target = _vehicle;
 
+        if (_commandSourceOverride is null)
+        {
+            _futurePathVisualizer = new FuturePathVisualizer
+            {
+                Route = CreateManualPreviewRoute(network, spawn.LaneId),
+                Target = _vehicle,
+            };
+            AddChild(_futurePathVisualizer);
+        }
+
         if (_hud is null)
         {
             _hud = new TelemetryHud();
@@ -210,6 +282,15 @@ public partial class Main : Node3D
 
             _vehicleCameraMonitor.Rig = _vehicleCameraRig;
             _vehicleCameraMonitor.SetPreviewEnabled(true);
+            if (_vehicleCameraArrayWindow is null)
+            {
+                CallDeferred(nameof(OpenCameraArrayWindow));
+            }
+            else
+            {
+                _vehicleCameraArrayWindow.Rig = _vehicleCameraRig;
+                _vehicleCameraArrayWindow.ShowMonitor();
+            }
             if (ReadCameraPreview() is { } cameraPreview)
             {
                 _vehicleCameraMonitor.SelectCamera(cameraPreview);
@@ -218,9 +299,50 @@ public partial class Main : Node3D
         else
         {
             _vehicleCameraRig.PreviewChannel = null;
+            _vehicleCameraArrayWindow?.HideMonitor();
         }
     }
 
+    private void OpenCameraArrayWindow()
+    {
+        if (!_cameraMonitorEnabled || _vehicleCameraRig is null)
+        {
+            return;
+        }
+
+        _vehicleCameraArrayWindow ??= new VehicleCameraArrayWindow();
+        if (_vehicleCameraArrayWindow.GetParent() is null)
+        {
+            GetTree().Root.AddChild(_vehicleCameraArrayWindow);
+        }
+
+        _vehicleCameraArrayWindow.Rig = _vehicleCameraRig;
+        _vehicleCameraArrayWindow.ShowMonitor();
+    }
+
+    private static DrivingRoute CreateManualPreviewRoute(RoadNetwork network, string spawnLaneId)
+    {
+        var laneIds = new List<string>();
+        var current = network.GetLane(spawnLaneId);
+        for (var index = 0; index < 8; index++)
+        {
+            laneIds.Add(current.Id);
+            var next = current.SuccessorLaneIds
+                .Where(candidate => !laneIds.Contains(candidate, StringComparer.Ordinal))
+                .Select(network.GetLane)
+                .OrderByDescending(candidate => CarOrama.Core.Geometry.Vector2D.Dot(current.Direction, candidate.Direction))
+                .ThenBy(candidate => candidate.Id, StringComparer.Ordinal)
+                .FirstOrDefault();
+            if (next is null)
+            {
+                break;
+            }
+
+            current = next;
+        }
+
+        return DrivingRoute.Create("manual-debug-preview", network, laneIds);
+    }
     private void AddIntersectionPreviewCamera()
     {
         if (_roadWorld is null)
@@ -546,7 +668,7 @@ public partial class Main : Node3D
                 "dataset-smoke",
                 physicsTicksPerSecond: Engine.PhysicsTicksPerSecond,
                 controlTicksPerSecond: 20,
-                maximumControlTicks: 4);
+                maximumControlTicks: 20);
             var manifestEntry = new ScenarioManifestEntry(
                 scenario.ScenarioId,
                 DatasetSplit.Test,
@@ -620,6 +742,7 @@ public partial class Main : Node3D
                 "*.png",
                 SearchOption.AllDirectories).Count();
             if (!result.IsTruncated ||
+                summary.Metrics.DistanceTravelledMeters <= 0.05 ||
                 summary.RecordedSensorFrameCount != expectedFrameCount ||
                 pngCount != expectedFrameCount ||
                 !File.Exists(completeMarker) ||
@@ -654,6 +777,37 @@ public partial class Main : Node3D
         }
     }
 
+    private async void StartLivePreviewRecording()
+    {
+        await RunDatasetRecordingAsync();
+    }
+
+    private async Task RunPolicyEvaluationAsync()
+    {
+        try
+        {
+            var evaluator = new GodotPolicyEvaluator(_episodeCommandSource!, _vehicleSpecification, this);
+            AddChild(evaluator);
+            var exitCode = await evaluator.EvaluateAsync(
+                OS.GetCmdlineUserArgs(),
+                _onnxVehiclePolicy ?? throw new InvalidOperationException("Policy initialization failed."),
+                PrepareRecordingWorldAsync);
+            GetTree().Paused = false;
+            GetTree().Quit(exitCode);
+        }
+        catch (Exception exception)
+        {
+            GD.PushError($"Policy evaluation failed: {exception}");
+            GetTree().Paused = false;
+            GetTree().Quit(1);
+        }
+        finally
+        {
+            _onnxVehiclePolicy?.Dispose();
+            _onnxVehiclePolicy = null;
+        }
+    }
+
     private async Task RunDatasetRecordingAsync()
     {
         try
@@ -662,7 +816,10 @@ public partial class Main : Node3D
             AddChild(recorder);
             var exitCode = await recorder.RecordAsync(OS.GetCmdlineUserArgs(), PrepareRecordingWorldAsync);
             GetTree().Paused = false;
-            GetTree().Quit(exitCode);
+            if (!HasArgument("--keep-open"))
+            {
+                GetTree().Quit(exitCode);
+            }
         }
         catch (Exception exception)
         {
@@ -707,6 +864,32 @@ public partial class Main : Node3D
         }
 
         return 42;
+    }
+
+    private static string ReadRequiredArgument(string name)
+    {
+        var arguments = OS.GetCmdlineUserArgs();
+        for (var index = 0; index + 1 < arguments.Length; index++)
+        {
+            if (arguments[index] == name && !arguments[index + 1].StartsWith("--", StringComparison.Ordinal))
+            {
+                return arguments[index + 1];
+            }
+        }
+
+        throw new ArgumentException($"Missing required argument {name}.");
+    }
+
+    private static string ResolveRepositoryPath(string path)
+    {
+        if (Path.IsPathRooted(path))
+        {
+            return Path.GetFullPath(path);
+        }
+
+        var projectDirectory = ProjectSettings.GlobalizePath("res://");
+        var repositoryDirectory = Path.GetFullPath(Path.Combine(projectDirectory, "..", ".."));
+        return Path.GetFullPath(Path.Combine(repositoryDirectory, path));
     }
 
     private static bool HasArgument(string expected) => OS.GetCmdlineUserArgs().Contains(expected);

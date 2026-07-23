@@ -87,6 +87,8 @@ public partial class ElectricVehicle : RigidBody3D
 
     public bool RightIndicatorLit => _exteriorLighting?.RightIndicatorLit ?? false;
 
+    public event Action? PhysicsIntegrated;
+
     public void SetResetTransform(Transform3D transform)
     {
         _resetTransform = transform;
@@ -116,6 +118,12 @@ public partial class ElectricVehicle : RigidBody3D
         {
             wheel.Suspension.Reset();
         }
+    }
+
+    public override void _IntegrateForces(PhysicsDirectBodyState3D state)
+    {
+        _ = state;
+        PhysicsIntegrated?.Invoke();
     }
 
     public override void _PhysicsProcess(double delta)
@@ -193,7 +201,7 @@ public partial class ElectricVehicle : RigidBody3D
             brakeMagnitude += (float)(drivetrain.RegenerativeBrakeForceNewtons / drivenWheelCount);
         }
 
-        if (Mathf.Abs(longitudinalVelocity) > 0.08f)
+        if (Mathf.Abs(longitudinalVelocity) > 0.001f)
         {
             var maximumNonReversingBrake = Mathf.Abs(longitudinalVelocity) * (float)_specification.MassKilograms
                 / (_wheels.Count * delta);

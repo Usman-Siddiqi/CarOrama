@@ -14,7 +14,7 @@ public partial class TelemetryHud : CanvasLayer
         {
             Name = "Panel",
             Position = new Vector2(18.0f, 18.0f),
-            Size = new Vector2(470.0f, 238.0f),
+            Size = new Vector2(520.0f, 270.0f),
             Color = new Color(0.025f, 0.04f, 0.05f, 0.82f),
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
@@ -23,7 +23,7 @@ public partial class TelemetryHud : CanvasLayer
         {
             Name = "Telemetry",
             Position = new Vector2(18.0f, 14.0f),
-            Size = new Vector2(440.0f, 212.0f),
+            Size = new Vector2(490.0f, 244.0f),
         };
         _label.AddThemeColorOverride("font_color", new Color("e9f4f7"));
         _label.AddThemeFontSizeOverride("font_size", 17);
@@ -46,10 +46,12 @@ public partial class TelemetryHud : CanvasLayer
         var signal = lighting.HazardLightsEnabled
             ? "HAZARD"
             : lighting.TurnSignal.ToString().ToUpperInvariant();
+        var command = Vehicle.LastCommand;
         _label.Text =
             $"CARORAMA  |  SEED {Seed}\n" +
             $"{Vehicle.SpeedMetersPerSecond * 3.6,6:F1} km/h    SOC {Vehicle.StateOfCharge * 100.0,5:F1}%\n" +
             $"Motor {Vehicle.MotorSpeedRpm,7:F0} rpm    Pack {Vehicle.BatteryPowerKilowatts,6:F1} kW\n" +
+            $"Throttle {command.Throttle * 100.0,5:F1}%    Regen {command.RegenerativeBrake * 100.0,5:F1}%    Friction {command.FrictionBrake * 100.0,5:F1}%\n" +
             $"Contact {Vehicle.GroundedWheelCount}/4    Collisions {Vehicle.CollisionCount}\n" +
             $"Headlights {(lighting.HeadlightsEnabled ? "ON" : "OFF"),-3}    Signal {signal}\n\n" +
             "W/S drive, brake & reverse  |  Space emergency brake\n" +

@@ -125,7 +125,7 @@ public sealed class DrivingRoute
 
         void AddIntersectionConnector(Lane incoming, Lane outgoing)
         {
-            const int curveSegments = 8;
+            const int curveSegments = 16;
             var start = incoming.CenterLine[^1];
             var end = outgoing.CenterLine[0];
             var chordLength = Vector2D.Distance(start, end);
@@ -137,7 +137,9 @@ public sealed class DrivingRoute
             // Cubic handles preserve the incoming and outgoing lane tangents. The
             // structured connector then describes a plausible path through the
             // conflict area instead of a diagonal with discontinuous headings.
-            var handleLength = chordLength * 0.5;
+            // Longer tangent handles keep the connector clear of the inside
+            // curb while preserving the incoming and outgoing lane headings.
+            var handleLength = chordLength * 0.7;
             var firstControl = start + (incoming.Direction * handleLength);
             var secondControl = end - (outgoing.Direction * handleLength);
             var previousPoint = start;
@@ -153,6 +155,18 @@ public sealed class DrivingRoute
                 previousPoint = point;
             }
         }
+    }
+
+    public Vector2D GetDirectionAtDistance(double distanceMeters)
+    {
+        if (!double.IsFinite(distanceMeters))
+        {
+            throw new ArgumentOutOfRangeException(nameof(distanceMeters));
+        }
+
+        var clampedDistance = Math.Clamp(distanceMeters, 0.0, TotalLengthMeters);
+        return _pathSegments.FirstOrDefault(candidate => clampedDistance <= candidate.EndDistanceMeters)?.Direction ??
+            _pathSegments[^1].Direction;
     }
 
     public Vector2D GetPointAtDistance(double distanceMeters)
@@ -193,6 +207,15 @@ public sealed class DrivingRoute
         return found;
     }
 
+    /// <summary>
+    /// Projects a world point onto the route and returns only its public
+    /// distance coordinate, keeping the internal segment representation private.
+    /// </summary>
+    public double ProjectProgress(
+        Vector2D point,
+        double minimumProgressMeters,
+        double maximumProgressMeters = double.PositiveInfinity) =>
+        Project(point, minimumProgressMeters, maximumProgressMeters).ProgressMeters;
     internal RoutePathProjection Project(
         Vector2D point,
         double minimumProgressMeters,

@@ -99,6 +99,86 @@ public partial class VehicleCameraRig : Node
     public CameraSensorSpecification GetSpecification(CameraSensorId id) => RequireChannel(id).Specification;
 
     /// <summary>
+    /// Captures synchronized camera pixels into the normalized NCHW tensor used
+    /// by the learned policy. The simulation may remain paused while rendering.
+    /// </summary>
+    public async Task<float[]> CaptureNormalizedTensorAsync(
+        IReadOnlyList<CameraSensorId> cameraIds,
+        int imageWidth,
+        int imageHeight)
+    {
+        ArgumentNullException.ThrowIfNull(cameraIds);
+        if (_captureInProgress)
+        {
+            throw new InvalidOperationException("A camera capture is already in progress.");
+        }
+
+        if (cameraIds.Count == 0 || cameraIds.Distinct().Count() != cameraIds.Count)
+        {
+            throw new ArgumentException("Inference requires one or more unique camera identifiers.", nameof(cameraIds));
+        }
+
+        if (imageWidth <= 0 || imageHeight <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(imageWidth), "Inference image dimensions must be positive.");
+        }
+
+        _captureInProgress = true;
+        try
+        {
+            UpdateCameraTransforms();
+            foreach (var id in cameraIds)
+            {
+                RequireChannel(id).Viewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Once;
+            }
+
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            var planeSize = checked(imageWidth * imageHeight);
+            var tensor = new float[checked(cameraIds.Count * 3 * planeSize)];
+            for (var cameraIndex = 0; cameraIndex < cameraIds.Count; cameraIndex++)
+            {
+                var channel = RequireChannel(cameraIds[cameraIndex]);
+                using var image = channel.Viewport.GetTexture().GetImage();
+                if (image.IsEmpty())
+                {
+                    throw new InvalidOperationException($"Camera '{cameraIds[cameraIndex]}' produced an empty image.");
+                }
+
+                if (image.GetWidth() != imageWidth || image.GetHeight() != imageHeight)
+                {
+                    image.Resize(imageWidth, imageHeight, Image.Interpolation.Bilinear);
+                }
+
+                if (image.GetFormat() != Image.Format.Rgb8)
+                {
+                    image.Convert(Image.Format.Rgb8);
+                }
+
+                var pixels = image.GetData();
+                if (pixels.Length != planeSize * 3)
+                {
+                    throw new InvalidOperationException($"Camera '{cameraIds[cameraIndex]}' returned an unexpected pixel buffer.");
+                }
+
+                var cameraOffset = cameraIndex * 3 * planeSize;
+                for (var pixelIndex = 0; pixelIndex < planeSize; pixelIndex++)
+                {
+                    var source = pixelIndex * 3;
+                    tensor[cameraOffset + pixelIndex] = (pixels[source] / 127.5f) - 1.0f;
+                    tensor[cameraOffset + planeSize + pixelIndex] = (pixels[source + 1] / 127.5f) - 1.0f;
+                    tensor[cameraOffset + (2 * planeSize) + pixelIndex] = (pixels[source + 2] / 127.5f) - 1.0f;
+                }
+            }
+
+            return tensor;
+        }
+        finally
+        {
+            _captureInProgress = false;
+        }
+    }
+
+    /// <summary>
     /// Renders and atomically saves a set of channels while the caller holds the
     /// simulation at a known physics tick.
     /// </summary>
@@ -234,6 +314,7 @@ public partial class VehicleCameraRig : Node
             Current = true,
             Fov = (float)specification.HorizontalFieldOfViewDegrees,
             KeepAspect = Camera3D.KeepAspectEnum.Width,
+            CullMask = 1u,
             Near = 0.05f,
             Far = 800.0f,
         };
